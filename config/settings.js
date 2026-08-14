@@ -9,17 +9,16 @@ export const SETTINGS = {
     // PROFILE
     // =================================================
 
-    // Jumlah candle yang digunakan untuk profile.
+    // Jumlah candle untuk menghitung profile.
     lookback: 150,
 
-    // Jumlah candle terbaru yang digunakan untuk
-    // menghitung POC / volume profile.
+    // Jumlah candle terbaru untuk Volume Profile / POC.
     pocLookback: 50,
 
     // Jumlah price bins.
     bins: 30,
 
-    // Value Area.
+    // Persentase volume untuk Value Area.
     valueAreaPercent: 70,
 
 
@@ -27,7 +26,7 @@ export const SETTINGS = {
     // VOLUME
     // =================================================
 
-    // Rata-rata volume dari 20 candle.
+    // Periode rata-rata volume.
     volumePeriod: 20,
 
     // Volume >= 2x rata-rata = volume spike.
@@ -38,14 +37,16 @@ export const SETTINGS = {
     // BUY CONFIRMATION
     // =================================================
 
-    // Jarak konfirmasi dari low recovery.
+    // Jumlah tick di atas low recovery.
     confirmTicks: 1,
 
-    // Tick size saham.
+    // Tick size default.
     //
-    // Untuk sementara 0.01.
-    // Nanti bisa disesuaikan dengan aturan tick
-    // harga saham Indonesia.
+    // Catatan:
+    // Untuk tahap scanner ini digunakan 0.01.
+    // Kalau nanti ingin mengikuti tick size IDX
+    // berdasarkan kelompok harga, bisa dibuat
+    // dinamis.
     tickSize: 0.01,
 
 
@@ -53,7 +54,7 @@ export const SETTINGS = {
     // RED ZONE
     // =================================================
 
-    // Jumlah bin di sekitar POC.
+    // Jumlah bin di atas/bawah POC.
     redZoneBins: 1,
 
 
@@ -61,7 +62,7 @@ export const SETTINGS = {
     // BUY INVALIDATION
     // =================================================
 
-    // Jarak maksimum di bawah Red Zone.
+    // Maksimal jarak bin di bawah Red Zone.
     maxDistanceBins: 2,
 
 
@@ -69,12 +70,15 @@ export const SETTINGS = {
     // MARKET DATA
     // =================================================
 
-    // Jumlah candle yang diminta dari Worker / Zapi.
+    // Jumlah candle yang diminta dari Worker.
+    //
+    // Worker:
+    // ?code=BBCA&length=150
     //
     // Harus >= lookback.
     candleLimit: 150,
 
-    // Data harian.
+    // Interval data.
     interval: "1d",
 
 
@@ -82,15 +86,25 @@ export const SETTINGS = {
     // SCANNER
     // =================================================
 
-    // Maksimal saham yang diproses sekali scan.
+    // Maksimal ticker yang diproses sekali scan.
     maxStocks: 5,
+
+
+    // =================================================
+    // CACHE
+    // =================================================
+
+    // Cache market data di browser.
+    cacheDuration:
+        30 * 1000,
 
 
     // =================================================
     // REFRESH
     // =================================================
 
-    // Refresh setiap 60 detik.
+    // Refresh otomatis setiap 60 detik.
     refreshInterval:
         60 * 1000
+
 };
