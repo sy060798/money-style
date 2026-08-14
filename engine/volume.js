@@ -2,271 +2,212 @@
 // MONEY STYLE SCANNER
 // engine/volume.js
 // =====================================================
+// VOLUME ENGINE
+// TIMEFRAME: 1H
+//
+// Disamakan dengan Pine Script:
+// Money Style - Volume Spread Profile v3 Adaptive POC
+// =====================================================
 
-export function calculateVolume(candles, settings = {}) {
+
+// =====================================================
+// CALCULATE VOLUME
+// =====================================================
+
+export function calculateVolume(
+    bars,
+    settings
+) {
+
+    // =================================================
+    // VALIDASI
+    // =================================================
+
+    if (
+        !Array.isArray(bars) ||
+        bars.length === 0
+    ) {
+
+        return null;
+
+    }
+
 
     // =================================================
     // SETTINGS
     // =================================================
 
     const volumePeriod =
-        Number(settings.volumePeriod ?? 20);
+        Number(
+            settings?.volumePeriod ?? 20
+        );
 
     const volumeSpikeMult =
-        Number(settings.volumeSpikeMult ?? 2.0);
+        Number(
+            settings?.volumeSpikeMult ?? 2.0
+        );
 
 
     // =================================================
-    // VALIDASI SETTINGS
+    // VALIDASI PERIOD
     // =================================================
 
     if (
         !Number.isFinite(volumePeriod) ||
-        volumePeriod < 1
+        volumePeriod <= 0
     ) {
+
         return null;
-    }
 
-    if (
-        !Number.isFinite(volumeSpikeMult) ||
-        volumeSpikeMult <= 0
-    ) {
-        return null;
-    }
-
-
-    // =================================================
-    // VALIDASI DATA
-    // =================================================
-
-    if (
-        !Array.isArray(candles) ||
-        candles.length === 0
-    ) {
-        return null;
-    }
-
-
-    // =================================================
-    // NORMALISASI CANDLE
-    // =================================================
-    //
-    // Zapi:
-    // terbaru -> terlama
-    //
-    // Engine:
-    // terlama -> terbaru
-    // =================================================
-
-    const normalizedCandles =
-        candles
-            .map((candle) => {
-
-                if (!candle) {
-                    return null;
-                }
-
-                const date =
-                    candle.date ?? null;
-
-                const open =
-                    Number(candle.open);
-
-                const high =
-                    Number(candle.high);
-
-                const low =
-                    Number(candle.low);
-
-                const close =
-                    Number(candle.close);
-
-                const volume =
-                    Number(candle.volume);
-
-
-                if (
-                    !Number.isFinite(open) ||
-                    !Number.isFinite(high) ||
-                    !Number.isFinite(low) ||
-                    !Number.isFinite(close) ||
-                    !Number.isFinite(volume)
-                ) {
-                    return null;
-                }
-
-
-                if (volume < 0) {
-                    return null;
-                }
-
-
-                if (high < low) {
-                    return null;
-                }
-
-
-                return {
-                    ...candle,
-
-                    date,
-
-                    open,
-                    high,
-                    low,
-                    close,
-                    volume
-                };
-            })
-            .filter(Boolean);
-
-
-    if (
-        normalizedCandles.length === 0
-    ) {
-        return null;
-    }
-
-
-    // =================================================
-    // URUTKAN CANDLE
-    // =================================================
-    //
-    // Terlama -> terbaru
-    //
-    // Supaya:
-    //
-    // candles[candles.length - 1]
-    //
-    // selalu candle terbaru.
-    // =================================================
-
-    const hasDates =
-        normalizedCandles.every(
-            candle => Boolean(candle.date)
-        );
-
-
-    if (hasDates) {
-
-        normalizedCandles.sort(
-            (a, b) => {
-
-                const timeA =
-                    new Date(a.date).getTime();
-
-                const timeB =
-                    new Date(b.date).getTime();
-
-
-                if (
-                    !Number.isFinite(timeA) ||
-                    !Number.isFinite(timeB)
-                ) {
-                    return 0;
-                }
-
-
-                return timeA - timeB;
-            }
-        );
-    }
-
-
-    // =================================================
-    // VALIDASI JUMLAH CANDLE
-    // =================================================
-
-    if (
-        normalizedCandles.length <
-        volumePeriod
-    ) {
-        return null;
     }
 
 
     // =================================================
     // CANDLE TERBARU
     // =================================================
+    //
+    // market.js sudah mengurutkan:
+    //
+    // lama → baru
+    //
+    // Jadi candle terbaru = index terakhir.
+    // =================================================
 
-    const current =
-        normalizedCandles[
-            normalizedCandles.length - 1
-        ];
+    const latest =
+        bars[bars.length - 1];
 
 
-    const open =
-        current.open;
+    if (!latest) {
 
-    const high =
-        current.high;
+        return null;
 
-    const low =
-        current.low;
-
-    const close =
-        current.close;
-
-    const volume =
-        current.volume;
+    }
 
 
     // =================================================
-    // VOLUME WINDOW
+    // VOLUME TERBARU
     // =================================================
+
+    const currentVolume =
+        Number(
+            latest.volume
+        );
+
+
+    if (
+        !Number.isFinite(currentVolume)
+    ) {
+
+        return null;
+
+    }
+
+
+    // =================================================
+    // VOLUME PERIOD
+    // =================================================
+    //
+    // Pine:
+    //
+    // averageVolume =
+    //     ta.sma(
+    //         srcVolume,
+    //         volumePeriod
+    //     )
+    //
+    // Artinya SMA volume dari candle terbaru
+    // termasuk candle saat ini.
+    // =================================================
+
+    const startIndex =
+        Math.max(
+            0,
+            bars.length - volumePeriod
+        );
+
 
     const volumeWindow =
-        normalizedCandles.slice(
-            -Math.floor(volumePeriod)
+        bars.slice(
+            startIndex
         );
 
 
     const validVolumes =
         volumeWindow
             .map(
-                candle =>
-                    Number(candle.volume)
+                bar =>
+                    Number(bar?.volume)
             )
             .filter(
-                value =>
-                    Number.isFinite(value) &&
-                    value >= 0
+                Number.isFinite
             );
 
 
+    // =================================================
+    // DATA BELUM CUKUP
+    // =================================================
+    //
+    // Supaya sama dengan Pine ketika SMA belum
+    // memiliki cukup data.
+    // =================================================
+
     if (
-        validVolumes.length === 0
+        validVolumes.length <
+        volumePeriod
     ) {
+
         return null;
+
     }
 
 
     // =================================================
-    // VOLUME RATA-RATA
+    // AVERAGE VOLUME
     // =================================================
 
-    const averageVolume =
+    const volumeSum =
         validVolumes.reduce(
-            (sum, value) =>
-                sum + value,
+            (
+                total,
+                value
+            ) =>
+                total + value,
             0
-        ) /
+        );
+
+
+    const averageVolume =
+        volumeSum /
         validVolumes.length;
 
 
     // =================================================
     // VOLUME RATIO
     // =================================================
+    //
+    // Pine:
+    //
+    // volumeRatio =
+    //     averageVolume > 0 ?
+    //     srcVolume / averageVolume :
+    //     0.0
+    // =================================================
 
     const volumeRatio =
         averageVolume > 0
-            ? volume /
+            ? currentVolume /
               averageVolume
             : 0;
 
 
     // =================================================
     // VOLUME SPIKE
+    // =================================================
+    //
+    // Pine:
+    //
+    // volumeSpike =
+    //     volumeRatio >= volumeSpikeMult
     // =================================================
 
     const volumeSpike =
@@ -278,143 +219,117 @@ export function calculateVolume(candles, settings = {}) {
     // CANDLE DIRECTION
     // =================================================
 
+    const open =
+        Number(
+            latest.open
+        );
+
+    const close =
+        Number(
+            latest.close
+        );
+
+
     const bullishCandle =
+        Number.isFinite(open) &&
+        Number.isFinite(close) &&
         close > open;
 
 
     const bearishCandle =
+        Number.isFinite(open) &&
+        Number.isFinite(close) &&
         close < open;
 
 
-    const neutralCandle =
-        close === open;
-
-
     // =================================================
-    // CANDLE RANGE
+    // POC
+    // =================================================
+    //
+    // POC berasal dari engine/profile.js.
+    //
+    // Volume engine tidak menghitung ulang POC.
     // =================================================
 
-    const candleRange =
-        high - low;
+    const profile =
+        arguments.length >= 3
+            ? arguments[2]
+            : null;
 
 
-    const candleBody =
-        Math.abs(
-            close - open
+    const pocPrice =
+        Number(
+            profile?.pocPrice
         );
 
 
     // =================================================
-    // BODY RATIO
-    // =================================================
-
-    const bodyRatio =
-        candleRange > 0
-            ? candleBody /
-              candleRange
-            : 0;
-
-
-    // =================================================
-    // CLOSE POSITION
+    // DUMP
     // =================================================
     //
-    // 0 = dekat LOW
-    // 1 = dekat HIGH
+    // Pine:
+    //
+    // dump =
+    //     validRange and
+    //     bearishCandle and
+    //     volumeSpike and
+    //     srcClose <= pocPrice
+    //
+    // Di sini validRange direpresentasikan oleh
+    // POC yang valid.
     // =================================================
 
-    const closePosition =
-        candleRange > 0
-            ? (
-                close - low
-            ) /
-            candleRange
-            : 0.5;
+    const dump =
+        Number.isFinite(pocPrice) &&
+        bearishCandle &&
+        volumeSpike &&
+        close <= pocPrice;
 
 
     // =================================================
-    // BUY / SELL PRESSURE
+    // PRESSURE
     // =================================================
 
     let pressure =
         "NORMAL";
 
 
-    if (
-        volumeSpike &&
-        bearishCandle
-    ) {
+    if (dump) {
 
         pressure =
-            "SELL";
+            "HIGH / DUMP";
 
-    } else if (
-        volumeSpike &&
-        bullishCandle
-    ) {
+    }
+
+    else if (volumeSpike) {
 
         pressure =
-            "BUY";
+            "HIGH";
+
     }
 
 
     // =================================================
-    // DUMP PRESSURE
-    // =================================================
-    //
-    // Volume besar + candle bearish.
-    //
-    // Ini hanya tekanan jual,
-    // bukan otomatis manipulasi.
-    // =================================================
-
-    const dumpPressure =
-        volumeSpike &&
-        bearishCandle;
-
-
-    // =================================================
-    // ABSORPTION
-    // =================================================
-    //
-    // Volume tinggi tetapi body kecil.
-    // =================================================
-
-    const absorption =
-        volumeSpike &&
-        bodyRatio <= 0.35;
-
-
-    // =================================================
-    // HASIL
+    // RETURN
     // =================================================
 
     return {
 
         // ---------------------------------------------
-        // DATA CANDLE TERBARU
+        // BASIC
         // ---------------------------------------------
 
-        date:
-            current.date ?? null,
-
-        open,
-        high,
-        low,
-        close,
-
-
-        // ---------------------------------------------
-        // VOLUME
-        // ---------------------------------------------
-
-        volume,
+        currentVolume,
 
         averageVolume,
 
         volumeRatio,
 
         volumeSpike,
+
+        volumePeriod,
+
+        volumeSpikeMult,
 
 
         // ---------------------------------------------
@@ -425,49 +340,28 @@ export function calculateVolume(candles, settings = {}) {
 
         bearishCandle,
 
-        neutralCandle,
-
 
         // ---------------------------------------------
-        // STRUKTUR CANDLE
+        // POC / PRESSURE
         // ---------------------------------------------
 
-        candleRange,
+        pocPrice:
+            Number.isFinite(pocPrice)
+                ? pocPrice
+                : null,
 
-        candleBody,
-
-        bodyRatio,
-
-        closePosition,
-
-
-        // ---------------------------------------------
-        // PRESSURE
-        // ---------------------------------------------
+        dump,
 
         pressure,
-
-
-        // ---------------------------------------------
-        // SIGNAL TAMBAHAN
-        // ---------------------------------------------
-
-        dumpPressure,
-
-        absorption,
 
 
         // ---------------------------------------------
         // META
         // ---------------------------------------------
 
-        candleCount:
-            normalizedCandles.length,
+        timeframe:
+            "1H"
 
-        period:
-            volumePeriod,
-
-        spikeMultiplier:
-            volumeSpikeMult
     };
+
 }
