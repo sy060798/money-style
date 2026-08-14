@@ -43,6 +43,17 @@ const marketStatus =
 
 
 // =====================================================
+// VALIDASI ELEMENT
+// =====================================================
+
+if (!stockResults) {
+    console.error(
+        "Money Style Scanner: #stockResults tidak ditemukan."
+    );
+}
+
+
+// =====================================================
 // GET TICKERS
 // =====================================================
 
@@ -50,10 +61,19 @@ function getTickers() {
 
     const tickers = [];
 
-    for (let i = 1; i <= SETTINGS.maxStocks; i++) {
+    const maxStocks =
+        Number(SETTINGS.maxStocks) || 5;
+
+    for (
+        let i = 1;
+        i <= maxStocks;
+        i++
+    ) {
 
         const input =
-            document.getElementById(`ticker${i}`);
+            document.getElementById(
+                `ticker${i}`
+            );
 
         if (!input) {
             continue;
@@ -62,27 +82,31 @@ function getTickers() {
         const ticker =
             input.value
                 .trim()
-                .toUpperCase();
+                .toUpperCase()
+                .replace(/\s+/g, "");
 
         if (ticker) {
             tickers.push(ticker);
         }
     }
 
-    return [...new Set(tickers)];
+    return [
+        ...new Set(tickers)
+    ];
 }
 
 
 // =====================================================
-// FORMAT NUMBER
+// FORMAT PRICE
 // =====================================================
 
 function formatPrice(value) {
 
+    const number =
+        Number(value);
+
     if (
-        value === null ||
-        value === undefined ||
-        !Number.isFinite(Number(value))
+        !Number.isFinite(number)
     ) {
         return "-";
     }
@@ -92,7 +116,7 @@ function formatPrice(value) {
         {
             maximumFractionDigits: 2
         }
-    ).format(Number(value));
+    ).format(number);
 }
 
 
@@ -102,19 +126,19 @@ function formatPrice(value) {
 
 function formatPercent(value) {
 
+    const number =
+        Number(value);
+
     if (
-        value === null ||
-        value === undefined ||
-        !Number.isFinite(Number(value))
+        !Number.isFinite(number)
     ) {
         return "-";
     }
 
-    const number =
-        Number(value);
-
     const sign =
-        number > 0 ? "+" : "";
+        number > 0
+            ? "+"
+            : "";
 
     return (
         sign +
@@ -130,15 +154,19 @@ function formatPercent(value) {
 
 function formatVolumeRatio(value) {
 
+    const number =
+        Number(value);
+
     if (
-        value === null ||
-        value === undefined ||
-        !Number.isFinite(Number(value))
+        !Number.isFinite(number)
     ) {
         return "-";
     }
 
-    return Number(value).toFixed(2) + "x";
+    return (
+        number.toFixed(2) +
+        "x"
+    );
 }
 
 
@@ -149,11 +177,26 @@ function formatVolumeRatio(value) {
 function escapeHTML(value) {
 
     return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+        .replaceAll(
+            "&",
+            "&amp;"
+        )
+        .replaceAll(
+            "<",
+            "&lt;"
+        )
+        .replaceAll(
+            ">",
+            "&gt;"
+        )
+        .replaceAll(
+            '"',
+            "&quot;"
+        )
+        .replaceAll(
+            "'",
+            "&#039;"
+        );
 }
 
 
@@ -167,7 +210,9 @@ function getStatusClass(status) {
         String(status || "")
             .toUpperCase();
 
-    if (value === "BUY") {
+    if (
+        value === "BUY"
+    ) {
         return "status-buy";
     }
 
@@ -200,13 +245,24 @@ function getStatusText(signal) {
         return "NORMAL";
     }
 
-    // Engine signal.js terbaru
-    if (signal.status) {
-        return signal.status;
+    // ---------------------------------------------
+    // Prioritas dari signal.js
+    // ---------------------------------------------
+
+    if (
+        signal.status
+    ) {
+        return String(
+            signal.status
+        );
     }
 
-    if (signal.signal) {
-        return signal.signal;
+    if (
+        signal.signal
+    ) {
+        return String(
+            signal.signal
+        );
     }
 
     return "NORMAL";
@@ -227,35 +283,65 @@ function getValidationText(signal) {
         };
     }
 
-    // Engine signal.js terbaru
-    if (signal.validation) {
 
-        if (
-            signal.validation === "BUY VALID"
-        ) {
-            return {
-                text: "BUY VALID",
-                className: "valid"
-            };
-        }
+    const validation =
+        String(
+            signal.validation || ""
+        );
 
-        if (
-            signal.validation.includes("INVALID")
-        ) {
-            return {
-                text: signal.validation,
-                className: "invalid"
-            };
-        }
+
+    if (
+        validation === "BUY VALID"
+    ) {
 
         return {
-            text: signal.validation,
+            text: "BUY VALID",
+            className: "valid"
+        };
+    }
+
+
+    if (
+        validation.includes(
+            "INVALID"
+        )
+    ) {
+
+        return {
+            text: validation,
+            className: "invalid"
+        };
+    }
+
+
+    if (
+        validation ===
+        "MENUNGGU RECOVERY"
+    ) {
+
+        return {
+            text: validation,
             className: ""
         };
     }
 
+
+    if (
+        validation ===
+        "VALID AREA"
+    ) {
+
+        return {
+            text: validation,
+            className: "valid"
+        };
+    }
+
+
     return {
-        text: "WAIT",
+        text:
+            validation ||
+            "WAIT",
         className: ""
     };
 }
@@ -272,12 +358,18 @@ function getSignalColor(signal) {
     }
 
     const value =
-        String(signal.signal || "")
+        String(
+            signal.signal || ""
+        )
             .toUpperCase();
 
-    if (value === "BUY") {
+
+    if (
+        value === "BUY"
+    ) {
         return "green";
     }
+
 
     if (
         value === "DUMP" ||
@@ -286,12 +378,14 @@ function getSignalColor(signal) {
         return "red";
     }
 
+
     if (
         value === "WAIT" ||
         value === "AREA MERAH"
     ) {
         return "orange";
     }
+
 
     return "";
 }
@@ -301,9 +395,13 @@ function getSignalColor(signal) {
 // RENDER ERROR
 // =====================================================
 
-function renderError(ticker, message) {
+function renderError(
+    ticker,
+    message
+) {
 
     return `
+
         <article class="stock-card">
 
             <div class="stock-header">
@@ -311,7 +409,9 @@ function renderError(ticker, message) {
                 <div class="stock-name">
 
                     <h3>
-                        ${escapeHTML(ticker)}
+                        ${escapeHTML(
+                            ticker
+                        )}
                     </h3>
 
                     <span>
@@ -320,11 +420,14 @@ function renderError(ticker, message) {
 
                 </div>
 
-                <span class="status-badge status-dump">
+                <span
+                    class="status-badge status-dump"
+                >
                     ERROR
                 </span>
 
             </div>
+
 
             <div class="signal-box">
 
@@ -336,7 +439,9 @@ function renderError(ticker, message) {
                     class="signal-value"
                     style="color:#ff4d5e"
                 >
-                    ${escapeHTML(message)}
+                    ${escapeHTML(
+                        message
+                    )}
                 </span>
 
             </div>
@@ -347,7 +452,7 @@ function renderError(ticker, message) {
 
 
 // =====================================================
-// RENDER STOCK CARD
+// RENDER STOCK
 // =====================================================
 
 function renderStock(data) {
@@ -363,32 +468,105 @@ function renderStock(data) {
 
 
     const status =
-        getStatusText(signal);
+        getStatusText(
+            signal
+        );
+
 
     const statusClass =
-        getStatusClass(status);
+        getStatusClass(
+            status
+        );
+
 
     const validation =
-        getValidationText(signal);
+        getValidationText(
+            signal
+        );
+
 
     const volumeRatio =
-        volume?.volumeRatio ?? null;
+        volume?.volumeRatio ??
+        null;
+
 
     const volumeSpike =
-        volume?.volumeSpike ?? false;
+        volume?.volumeSpike ??
+        false;
+
 
     const volumeColor =
         volumeSpike
             ? "orange"
             : "";
 
+
     const signalColor =
-        getSignalColor(signal);
+        getSignalColor(
+            signal
+        );
+
+
+    const pocPrice =
+        profile?.pocPrice;
+
+
+    const redZoneLow =
+        profile?.redZoneLow;
+
+
+    const redZoneHigh =
+        profile?.redZoneHigh;
+
+
+    const valueAreaHigh =
+        profile?.valueAreaHigh;
+
+
+    const valueAreaLow =
+        profile?.valueAreaLow;
+
+
+    const pocLookback =
+        profile?.pocLookback ??
+        SETTINGS.pocLookback;
+
+
+    const bins =
+        profile?.bins ??
+        SETTINGS.bins;
+
+
+    const profileStrength =
+        Number(
+            profile?.profileStrength
+        ) || 0;
+
+
+    const pocPosition =
+        Number(
+            profile?.pocPosition
+        );
+
+
+    const safePocPosition =
+        Number.isFinite(
+            pocPosition
+        )
+            ? pocPosition
+            : 50;
+
+
+    const score =
+        Number(
+            signal?.score
+        ) || 0;
 
 
     return `
 
         <article class="stock-card">
+
 
             <!-- ================================= -->
             <!-- HEADER -->
@@ -401,7 +579,9 @@ function renderStock(data) {
                     <div>
 
                         <h3>
-                            ${escapeHTML(ticker)}
+                            ${escapeHTML(
+                                ticker
+                            )}
                         </h3>
 
                         <span>
@@ -412,10 +592,13 @@ function renderStock(data) {
 
                 </div>
 
+
                 <span
                     class="status-badge ${statusClass}"
                 >
-                    ${escapeHTML(status)}
+                    ${escapeHTML(
+                        status
+                    )}
                 </span>
 
             </div>
@@ -428,27 +611,37 @@ function renderStock(data) {
             <div class="stock-price">
 
                 <span class="price">
-                    ${formatPrice(price)}
+                    ${formatPrice(
+                        price
+                    )}
                 </span>
+
 
                 <span
                     class="change ${
-                        Number(changePercent) >= 0
+                        Number(
+                            changePercent
+                        ) >= 0
                             ? "change-up"
                             : "change-down"
                     }"
                 >
-                    ${formatPercent(changePercent)}
+                    ${formatPercent(
+                        changePercent
+                    )}
                 </span>
 
             </div>
 
 
             <!-- ================================= -->
-            <!-- DATA -->
+            <!-- DATA GRID -->
             <!-- ================================= -->
 
             <div class="data-grid">
+
+
+                <!-- POC -->
 
                 <div class="data-item">
 
@@ -458,12 +651,14 @@ function renderStock(data) {
 
                     <span class="data-value red">
                         ${formatPrice(
-                            profile?.pocPrice
+                            pocPrice
                         )}
                     </span>
 
                 </div>
 
+
+                <!-- RED ZONE -->
 
                 <div class="data-item">
 
@@ -472,17 +667,23 @@ function renderStock(data) {
                     </span>
 
                     <span class="data-value">
+
                         ${formatPrice(
-                            profile?.redZoneLow
+                            redZoneLow
                         )}
+
                         -
+
                         ${formatPrice(
-                            profile?.redZoneHigh
+                            redZoneHigh
                         )}
+
                     </span>
 
                 </div>
 
+
+                <!-- VOLUME -->
 
                 <div class="data-item">
 
@@ -501,6 +702,8 @@ function renderStock(data) {
                 </div>
 
 
+                <!-- VAH -->
+
                 <div class="data-item">
 
                     <span class="data-label">
@@ -509,12 +712,14 @@ function renderStock(data) {
 
                     <span class="data-value orange">
                         ${formatPrice(
-                            profile?.valueAreaHigh
+                            valueAreaHigh
                         )}
                     </span>
 
                 </div>
 
+
+                <!-- VAL -->
 
                 <div class="data-item">
 
@@ -524,12 +729,14 @@ function renderStock(data) {
 
                     <span class="data-value green">
                         ${formatPrice(
-                            profile?.valueAreaLow
+                            valueAreaLow
                         )}
                     </span>
 
                 </div>
 
+
+                <!-- POC LOOKBACK -->
 
                 <div class="data-item">
 
@@ -539,8 +746,7 @@ function renderStock(data) {
 
                     <span class="data-value blue">
                         ${escapeHTML(
-                            profile?.pocLookback ??
-                            SETTINGS.pocLookback
+                            pocLookback
                         )}
                     </span>
 
@@ -563,8 +769,7 @@ function renderStock(data) {
 
                     <span>
                         ${escapeHTML(
-                            profile?.bins ??
-                            SETTINGS.bins
+                            bins
                         )} LEVEL
                     </span>
 
@@ -581,9 +786,7 @@ function renderStock(data) {
                                 5,
                                 Math.min(
                                     100,
-                                    Number(
-                                        profile?.profileStrength
-                                    ) || 0
+                                    profileStrength
                                 )
                             )}%;
                         "
@@ -596,6 +799,7 @@ function renderStock(data) {
 
                     <div class="poc-track"></div>
 
+
                     <div
                         class="poc-marker"
                         style="
@@ -604,9 +808,7 @@ function renderStock(data) {
                                 0,
                                 Math.min(
                                     100,
-                                    Number(
-                                        profile?.pocPosition
-                                    ) || 50
+                                    safePocPosition
                                 )
                             )}%;
                         "
@@ -627,11 +829,13 @@ function renderStock(data) {
                     SIGNAL
                 </span>
 
+
                 <span
                     class="signal-value ${signalColor}"
                 >
                     ${escapeHTML(
-                        signal?.signal || status
+                        signal?.signal ||
+                        status
                     )}
                 </span>
 
@@ -646,7 +850,7 @@ function renderStock(data) {
 
                 SCORE:
                 ${escapeHTML(
-                    signal?.score ?? 0
+                    score
                 )}/100
 
             </div>
@@ -659,11 +863,37 @@ function renderStock(data) {
             <div
                 class="validation ${validation.className}"
             >
+
                 BUY VALIDASI:
+
                 ${escapeHTML(
                     validation.text
                 )}
+
             </div>
+
+
+            <!-- ================================= -->
+            <!-- OPTIONAL RECOVERY INFO -->
+            <!-- ================================= -->
+
+            ${
+                signal?.waitingRecovery
+                    ? `
+
+                    <div class="validation">
+
+                        RECOVERY:
+
+                        ${formatPrice(
+                            signal.recoveryPrice
+                        )}
+
+                    </div>
+
+                    `
+                    : ""
+            }
 
         </article>
     `;
@@ -676,6 +906,11 @@ function renderStock(data) {
 
 function showLoading() {
 
+    if (!stockResults) {
+        return;
+    }
+
+
     stockResults.innerHTML = `
 
         <div class="loading-state">
@@ -687,11 +922,21 @@ function showLoading() {
         </div>
     `;
 
-    resultCount.textContent =
-        "SCANNING";
 
-    marketStatus.textContent =
-        "FETCHING DATA";
+    if (resultCount) {
+
+        resultCount.textContent =
+            "SCANNING";
+
+    }
+
+
+    if (marketStatus) {
+
+        marketStatus.textContent =
+            "FETCHING DATA";
+
+    }
 }
 
 
@@ -700,6 +945,11 @@ function showLoading() {
 // =====================================================
 
 function showEmpty() {
+
+    if (!stockResults) {
+        return;
+    }
+
 
     stockResults.innerHTML = `
 
@@ -721,8 +971,13 @@ function showEmpty() {
         </div>
     `;
 
-    resultCount.textContent =
-        "0 SAHAM";
+
+    if (resultCount) {
+
+        resultCount.textContent =
+            "0 SAHAM";
+
+    }
 }
 
 
@@ -730,7 +985,9 @@ function showEmpty() {
 // SCAN ONE STOCK
 // =====================================================
 
-async function scanStock(ticker) {
+async function scanStock(
+    ticker
+) {
 
     try {
 
@@ -739,24 +996,29 @@ async function scanStock(ticker) {
         // =============================================
 
         const marketData =
-            await getMarketData(ticker);
+            await getMarketData(
+                ticker
+            );
 
 
         if (
             !marketData ||
-            !Array.isArray(marketData.bars) ||
+            !Array.isArray(
+                marketData.bars
+            ) ||
             marketData.bars.length === 0
         ) {
+
             throw new Error(
-                "Tidak ada data market"
+                "Tidak ada data market."
             );
         }
 
 
         console.log(
-            `[${ticker}]`,
-            "bars:",
-            marketData.bars.length
+            `[${ticker}] Market data:`,
+            marketData.bars.length,
+            "candle"
         );
 
 
@@ -769,6 +1031,14 @@ async function scanStock(ticker) {
                 marketData.bars,
                 SETTINGS
             );
+
+
+        if (!profile) {
+
+            throw new Error(
+                "Profile tidak dapat dihitung."
+            );
+        }
 
 
         // =============================================
@@ -807,7 +1077,7 @@ async function scanStock(ticker) {
         if (!signal) {
 
             throw new Error(
-                "Signal tidak dapat dihitung"
+                "Signal tidak dapat dihitung."
             );
         }
 
@@ -831,6 +1101,7 @@ async function scanStock(ticker) {
             volume,
 
             signal
+
         };
 
     } catch (error) {
@@ -840,13 +1111,15 @@ async function scanStock(ticker) {
             error
         );
 
+
         return {
 
             ticker,
 
             error:
                 error?.message ||
-                "Gagal mengambil data"
+                "Gagal mengambil data."
+
         };
     }
 }
@@ -862,12 +1135,19 @@ async function scanAll() {
         getTickers();
 
 
-    if (tickers.length === 0) {
+    if (
+        tickers.length === 0
+    ) {
 
         showEmpty();
 
-        scanTime.textContent =
-            "Belum ada ticker";
+
+        if (scanTime) {
+
+            scanTime.textContent =
+                "Belum ada ticker";
+
+        }
 
         return;
     }
@@ -876,9 +1156,13 @@ async function scanAll() {
     showLoading();
 
 
-    scanButton.classList.add(
-        "loading"
-    );
+    if (scanButton) {
+
+        scanButton.classList.add(
+            "loading"
+        );
+
+    }
 
 
     try {
@@ -891,7 +1175,9 @@ async function scanAll() {
             await Promise.all(
                 tickers.map(
                     ticker =>
-                        scanStock(ticker)
+                        scanStock(
+                            ticker
+                        )
                 )
             );
 
@@ -900,48 +1186,110 @@ async function scanAll() {
         // RENDER
         // =============================================
 
-        stockResults.innerHTML =
-            results
-                .map(result => {
+        if (stockResults) {
 
-                    if (result.error) {
+            stockResults.innerHTML =
+                results
+                    .map(
+                        result => {
 
-                        return renderError(
-                            result.ticker,
-                            result.error
-                        );
-                    }
+                            if (
+                                result.error
+                            ) {
 
-                    return renderStock(
-                        result
-                    );
+                                return renderError(
+                                    result.ticker,
+                                    result.error
+                                );
+                            }
 
-                })
-                .join("");
+                            return renderStock(
+                                result
+                            );
+
+                        }
+                    )
+                    .join("");
+
+        }
 
 
-        resultCount.textContent =
-            `${results.length} SAHAM`;
+        // =============================================
+        // COUNT
+        // =============================================
 
+        if (resultCount) {
+
+            resultCount.textContent =
+                `${results.length} SAHAM`;
+
+        }
+
+
+        // =============================================
+        // TIME
+        // =============================================
 
         const now =
             new Date();
 
 
-        scanTime.textContent =
-            `Update ${now.toLocaleTimeString(
-                "id-ID",
-                {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit"
-                }
-            )}`;
+        if (scanTime) {
+
+            scanTime.textContent =
+                `Update ${now.toLocaleTimeString(
+                    "id-ID",
+                    {
+                        hour:
+                            "2-digit",
+
+                        minute:
+                            "2-digit",
+
+                        second:
+                            "2-digit"
+                    }
+                )}`;
+
+        }
 
 
-        marketStatus.textContent =
-            "DATA TERHUBUNG";
+        // =============================================
+        // MARKET STATUS
+        // =============================================
 
+        const successCount =
+            results.filter(
+                result =>
+                    !result.error
+            ).length;
+
+
+        if (marketStatus) {
+
+            if (
+                successCount ===
+                results.length
+            ) {
+
+                marketStatus.textContent =
+                    "DATA TERHUBUNG";
+
+            } else if (
+                successCount > 0
+            ) {
+
+                marketStatus.textContent =
+                    "DATA SEBAGIAN TERHUBUNG";
+
+            } else {
+
+                marketStatus.textContent =
+                    "DATA ERROR";
+
+            }
+
+        }
 
     } catch (error) {
 
@@ -951,34 +1299,52 @@ async function scanAll() {
         );
 
 
-        stockResults.innerHTML = `
+        if (stockResults) {
 
-            <div class="empty-state">
+            stockResults.innerHTML = `
 
-                <div class="empty-icon">
-                    !
+                <div class="empty-state">
+
+                    <div class="empty-icon">
+                        !
+                    </div>
+
+                    <h3>
+                        Gagal mengambil data
+                    </h3>
+
+                    <p>
+                        ${
+                            escapeHTML(
+                                error?.message ||
+                                "Periksa koneksi atau sumber market data."
+                            )
+                        }
+                    </p>
+
                 </div>
+            `;
 
-                <h3>
-                    Gagal mengambil data
-                </h3>
-
-                <p>
-                    Periksa koneksi atau sumber market data.
-                </p>
-
-            </div>
-        `;
+        }
 
 
-        marketStatus.textContent =
-            "DATA ERROR";
+        if (marketStatus) {
+
+            marketStatus.textContent =
+                "DATA ERROR";
+
+        }
 
     } finally {
 
-        scanButton.classList.remove(
-            "loading"
-        );
+        if (scanButton) {
+
+            scanButton.classList.remove(
+                "loading"
+            );
+
+        }
+
     }
 }
 
@@ -993,6 +1359,7 @@ if (scanButton) {
         "click",
         scanAll
     );
+
 }
 
 
@@ -1004,22 +1371,28 @@ document
     .querySelectorAll(
         ".ticker-inputs input"
     )
-    .forEach(input => {
+    .forEach(
+        input => {
 
-        input.addEventListener(
-            "keydown",
-            event => {
+            input.addEventListener(
+                "keydown",
+                event => {
 
-                if (
-                    event.key === "Enter"
-                ) {
-                    scanAll();
+                    if (
+                        event.key === "Enter"
+                    ) {
+
+                        event.preventDefault();
+
+                        scanAll();
+
+                    }
+
                 }
+            );
 
-            }
-        );
-
-    });
+        }
+    );
 
 
 // =====================================================
