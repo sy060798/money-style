@@ -9,6 +9,11 @@ export function calculateSignal(
     volumeData,
     settings = {}
 ) {
+
+    // =================================================
+    // VALIDASI
+    // =================================================
+
     if (
         !Array.isArray(candles) ||
         candles.length === 0 ||
@@ -18,52 +23,210 @@ export function calculateSignal(
         return null;
     }
 
-    const {
-        redZoneBins = 1,
-        maxDistanceBins = 2,
-        confirmTicks = 1,
-        tickSize = 0.01
-    } = settings;
+
+    // =================================================
+    // SETTINGS
+    // =================================================
+
+    const redZoneBins =
+        Number(settings.redZoneBins ?? 1);
+
+    const maxDistanceBins =
+        Number(settings.maxDistanceBins ?? 2);
+
+    const confirmTicks =
+        Number(settings.confirmTicks ?? 1);
+
+    const tickSize =
+        Number(settings.tickSize ?? 0.01);
+
+
+    if (
+        !Number.isFinite(redZoneBins) ||
+        !Number.isFinite(maxDistanceBins) ||
+        !Number.isFinite(confirmTicks) ||
+        !Number.isFinite(tickSize) ||
+        tickSize <= 0
+    ) {
+        return null;
+    }
+
+
+    // =================================================
+    // NORMALISASI CANDLE
+    // =================================================
+    //
+    // Zapi:
+    // terbaru -> terlama
+    //
+    // Signal membutuhkan:
+    // terlama -> terbaru
+    //
+    // Supaya recovery dihitung secara kronologis.
+    // =================================================
+
+    const normalizedCandles =
+        candles
+            .map((candle) => {
+
+                if (!candle) {
+                    return null;
+                }
+
+                const date =
+                    candle.date ?? null;
+
+                const open =
+                    Number(candle.open);
+
+                const high =
+                    Number(candle.high);
+
+                const low =
+                    Number(candle.low);
+
+                const close =
+                    Number(candle.close);
+
+                const volume =
+                    Number(candle.volume);
+
+
+                if (
+                    !Number.isFinite(open) ||
+                    !Number.isFinite(high) ||
+                    !Number.isFinite(low) ||
+                    !Number.isFinite(close)
+                ) {
+                    return null;
+                }
+
+
+                return {
+                    ...candle,
+                    date,
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume
+                };
+            })
+            .filter(Boolean);
+
+
+    if (
+        normalizedCandles.length === 0
+    ) {
+        return null;
+    }
+
+
+    // =================================================
+    // URUTKAN:
+    // TERLAMA -> TERBARU
+    // =================================================
+
+    const hasDates =
+        normalizedCandles.every(
+            candle => Boolean(candle.date)
+        );
+
+
+    if (hasDates) {
+
+        normalizedCandles.sort(
+            (a, b) => {
+
+                const timeA =
+                    new Date(a.date).getTime();
+
+                const timeB =
+                    new Date(b.date).getTime();
+
+                if (
+                    !Number.isFinite(timeA) ||
+                    !Number.isFinite(timeB)
+                ) {
+                    return 0;
+                }
+
+                return timeA - timeB;
+            }
+        );
+    }
+
 
     // =================================================
     // DATA TERBARU
     // =================================================
 
     const current =
-        candles[candles.length - 1];
+        normalizedCandles[
+            normalizedCandles.length - 1
+        ];
 
-    const close = Number(current.close);
-    const high = Number(current.high);
-    const low = Number(current.low);
-    const open = Number(current.open);
 
-    if (
-        !Number.isFinite(close) ||
-        !Number.isFinite(high) ||
-        !Number.isFinite(low) ||
-        !Number.isFinite(open)
-    ) {
-        return null;
-    }
+    const close =
+        current.close;
+
+    const high =
+        current.high;
+
+    const low =
+        current.low;
+
+    const open =
+        current.open;
+
 
     // =================================================
     // PROFILE
     // =================================================
 
-    const {
-        profileLow,
-        binSize,
-        pocIndex,
-        pocPrice
-    } = profile;
+    const profileLow =
+        Number(profile.profileLow);
+
+    const binSize =
+        Number(profile.binSize);
+
+    const pocIndex =
+        Number(profile.pocIndex);
+
+    const pocPrice =
+        Number(profile.pocPrice);
+
 
     if (
         !Number.isFinite(profileLow) ||
         !Number.isFinite(binSize) ||
-        binSize <= 0
+        binSize <= 0 ||
+        !Number.isFinite(pocIndex) ||
+        !Number.isFinite(pocPrice)
     ) {
         return null;
     }
+
+
+    // =================================================
+    // JUMLAH BIN
+    // =================================================
+
+    const profileBins =
+        Number(
+            profile.bins ??
+            profile.volumeBins?.length ??
+            30
+        );
+
+
+    if (
+        !Number.isFinite(profileBins) ||
+        profileBins < 1
+    ) {
+        return null;
+    }
+
 
     // =================================================
     // RED ZONE
@@ -72,22 +235,30 @@ export function calculateSignal(
     const redLowIndex =
         Math.max(
             0,
-            pocIndex - redZoneBins
+            pocIndex -
+            redZoneBins
         );
+
 
     const redHighIndex =
         Math.min(
-            profile.bins - 1,
-            pocIndex + redZoneBins
+            profileBins - 1,
+            pocIndex +
+            redZoneBins
         );
+
 
     const redZoneLow =
         profileLow +
-        redLowIndex * binSize;
+        redLowIndex *
+        binSize;
+
 
     const redZoneHigh =
         profileLow +
-        (redHighIndex + 1) * binSize;
+        (redHighIndex + 1) *
+        binSize;
+
 
     // =================================================
     // INVALID BUY AREA
@@ -96,12 +267,16 @@ export function calculateSignal(
     const invalidIndex =
         Math.max(
             0,
-            redLowIndex - maxDistanceBins
+            redLowIndex -
+            maxDistanceBins
         );
+
 
     const invalidBuyLow =
         profileLow +
-        invalidIndex * binSize;
+        invalidIndex *
+        binSize;
+
 
     // =================================================
     // POSISI HARGA
@@ -111,14 +286,18 @@ export function calculateSignal(
         low <= redZoneHigh &&
         high >= redZoneLow;
 
+
     const belowRedZone =
         close < redZoneLow;
+
 
     const aboveRedZone =
         close > redZoneHigh;
 
+
     const tooFarBelow =
         close < invalidBuyLow;
+
 
     // =================================================
     // CANDLE
@@ -127,63 +306,107 @@ export function calculateSignal(
     const bullishCandle =
         close > open;
 
+
     const bearishCandle =
         close < open;
+
+
+    // =================================================
+    // VOLUME
+    // =================================================
+
+    const volumeSpike =
+        Boolean(
+            volumeData.volumeSpike
+        );
+
+
+    const volumeBullishCandle =
+        Boolean(
+            volumeData.bullishCandle
+        );
+
+
+    const volumeRatio =
+        Number.isFinite(
+            Number(volumeData.volumeRatio)
+        )
+            ? Number(volumeData.volumeRatio)
+            : 0;
+
+
+    const pressure =
+        volumeData.pressure ??
+        "NORMAL";
+
 
     // =================================================
     // DUMP
     // =================================================
 
     const dump =
-        volumeData.volumeSpike &&
+        volumeSpike &&
         bearishCandle &&
         close <= pocPrice;
+
 
     // =================================================
     // RECOVERY
     // =================================================
     //
-    // Kita cari low terendah setelah candle yang
-    // menyentuh red zone.
+    // Urutan candle sudah:
     //
-    // Karena scanner web melakukan kalkulasi ulang,
-    // state dihitung dari candle history asli.
+    // TERLAMA -> TERBARU
+    //
+    // Jadi state recovery bisa dihitung dengan benar.
     // =================================================
 
-    let waitingRecovery = false;
-    let lowestAfterTouch = null;
-    let touchIndex = -1;
+    let waitingRecovery =
+        false;
+
+    let lowestAfterTouch =
+        null;
+
+    let touchIndex =
+        -1;
+
 
     for (
         let i = 0;
-        i < candles.length;
+        i < normalizedCandles.length;
         i++
     ) {
-        const candle = candles[i];
+
+        const candle =
+            normalizedCandles[i];
+
 
         const cHigh =
-            Number(candle.high);
+            candle.high;
 
         const cLow =
-            Number(candle.low);
+            candle.low;
 
         const cClose =
-            Number(candle.close);
+            candle.close;
 
-        if (
-            !Number.isFinite(cHigh) ||
-            !Number.isFinite(cLow) ||
-            !Number.isFinite(cClose)
-        ) {
-            continue;
-        }
+
+        // ---------------------------------------------
+        // CEK CANDLE MENYENTUH RED ZONE
+        // ---------------------------------------------
 
         const candleInsideZone =
             cLow <= redZoneHigh &&
             cHigh >= redZoneLow;
 
+
+        // ---------------------------------------------
+        // CEK TERLALU JAUH
+        // ---------------------------------------------
+
         const candleTooFarBelow =
             cClose < invalidBuyLow;
+
 
         // ---------------------------------------------
         // POC LOST
@@ -193,13 +416,20 @@ export function calculateSignal(
             waitingRecovery &&
             candleTooFarBelow
         ) {
-            waitingRecovery = false;
-            lowestAfterTouch = null;
-            touchIndex = -1;
+
+            waitingRecovery =
+                false;
+
+            lowestAfterTouch =
+                null;
+
+            touchIndex =
+                -1;
         }
 
+
         // ---------------------------------------------
-        // TOUCH
+        // TOUCH RED ZONE
         // ---------------------------------------------
 
         if (
@@ -207,12 +437,17 @@ export function calculateSignal(
             !waitingRecovery &&
             !candleTooFarBelow
         ) {
-            waitingRecovery = true;
 
-            lowestAfterTouch = cLow;
+            waitingRecovery =
+                true;
 
-            touchIndex = i;
+            lowestAfterTouch =
+                cLow;
+
+            touchIndex =
+                i;
         }
+
 
         // ---------------------------------------------
         // UPDATE LOW
@@ -223,8 +458,12 @@ export function calculateSignal(
             if (
                 lowestAfterTouch === null
             ) {
-                lowestAfterTouch = cLow;
+
+                lowestAfterTouch =
+                    cLow;
+
             } else {
+
                 lowestAfterTouch =
                     Math.min(
                         lowestAfterTouch,
@@ -234,27 +473,38 @@ export function calculateSignal(
         }
     }
 
+
     // =================================================
     // RECOVERY PRICE
     // =================================================
 
-    let recoveryPrice = null;
+    let recoveryPrice =
+        null;
+
 
     if (
         waitingRecovery &&
         lowestAfterTouch !== null
     ) {
+
         recoveryPrice =
             lowestAfterTouch +
-            confirmTicks * tickSize;
+            confirmTicks *
+            tickSize;
     }
 
+
     // =================================================
-    // BUY VALIDATION
+    // BUY PRICE VALIDATION
     // =================================================
 
     const buyPriceValid =
         close >= invalidBuyLow;
+
+
+    // =================================================
+    // RECOVERY CONFIRMATION
+    // =================================================
 
     const recoveryConfirmed =
         waitingRecovery &&
@@ -264,73 +514,94 @@ export function calculateSignal(
         buyPriceValid &&
         touchIndex >= 0;
 
+
     // =================================================
     // STATUS
     // =================================================
 
-    let status = "NORMAL";
+    let status =
+        "NORMAL";
+
 
     if (recoveryConfirmed) {
 
-        status = "BUY";
+        status =
+            "BUY";
 
     } else if (dump) {
 
-        status = "DUMP";
+        status =
+            "DUMP";
 
     } else if (tooFarBelow) {
 
-        status = "POC LOST";
+        status =
+            "POC LOST";
 
     } else if (waitingRecovery) {
 
-        status = "WAIT / RECOVERY";
+        status =
+            "WAIT / RECOVERY";
 
     } else if (insideRedZone) {
 
-        status = "AREA MERAH";
+        status =
+            "AREA MERAH";
 
     } else if (belowRedZone) {
 
-        status = "DI BAWAH POC";
+        status =
+            "DI BAWAH POC";
 
     } else if (aboveRedZone) {
 
-        status = "DI ATAS POC";
+        status =
+            "DI ATAS POC";
     }
+
 
     // =================================================
     // SIGNAL
     // =================================================
 
-    let signal = "WAIT";
+    let signal =
+        "WAIT";
+
 
     if (recoveryConfirmed) {
 
-        signal = "BUY";
+        signal =
+            "BUY";
 
     } else if (dump) {
 
-        signal = "DUMP";
+        signal =
+            "DUMP";
 
     } else if (tooFarBelow) {
 
-        signal = "POC LOST";
+        signal =
+            "POC LOST";
 
     } else if (waitingRecovery) {
 
-        signal = "WAIT";
+        signal =
+            "WAIT";
 
     } else if (insideRedZone) {
 
-        signal = "AREA MERAH";
+        signal =
+            "AREA MERAH";
     }
+
 
     // =================================================
     // BUY VALIDATION TEXT
     // =================================================
 
-    let validation = "WAIT";
+    let validation =
+        "WAIT";
+
 
     if (tooFarBelow) {
 
@@ -353,39 +624,44 @@ export function calculateSignal(
             "VALID AREA";
     }
 
+
     // =================================================
     // SIGNAL SCORE
     // =================================================
-    //
-    // Bukan probabilitas profit.
-    // Hanya skor kondisi scanner.
-    // =================================================
 
-    let score = 0;
+    let score =
+        0;
+
 
     if (insideRedZone) {
         score += 20;
     }
 
-    if (volumeData.volumeSpike) {
+
+    if (volumeSpike) {
         score += 20;
     }
 
-    if (volumeData.bullishCandle) {
+
+    if (volumeBullishCandle) {
         score += 20;
     }
+
 
     if (waitingRecovery) {
         score += 20;
     }
 
+
     if (recoveryConfirmed) {
         score += 20;
     }
 
+
     if (tooFarBelow) {
         score = 0;
     }
+
 
     // =================================================
     // HASIL
@@ -393,47 +669,121 @@ export function calculateSignal(
 
     return {
 
+        // ---------------------------------------------
+        // SIGNAL
+        // ---------------------------------------------
+
         status,
+
         signal,
+
         validation,
+
         score,
 
-        // Harga
+
+        // ---------------------------------------------
+        // CURRENT PRICE
+        // ---------------------------------------------
+
         close,
+
+        open,
+
+        high,
+
+        low,
+
+
+        // ---------------------------------------------
+        // PROFILE
+        // ---------------------------------------------
+
         pocPrice,
 
-        // Red zone
+        pocIndex,
+
+        binSize,
+
+
+        // ---------------------------------------------
+        // RED ZONE
+        // ---------------------------------------------
+
+        redLowIndex,
+
+        redHighIndex,
+
         redZoneLow,
+
         redZoneHigh,
 
-        // Invalid area
+
+        // ---------------------------------------------
+        // INVALID AREA
+        // ---------------------------------------------
+
+        invalidIndex,
+
         invalidBuyLow,
 
-        // Recovery
+
+        // ---------------------------------------------
+        // RECOVERY
+        // ---------------------------------------------
+
         waitingRecovery,
+
         lowestAfterTouch,
+
         recoveryPrice,
 
-        // Kondisi
+        touchIndex,
+
+
+        // ---------------------------------------------
+        // KONDISI HARGA
+        // ---------------------------------------------
+
         insideRedZone,
+
         belowRedZone,
+
         aboveRedZone,
+
         tooFarBelow,
 
-        // Volume
-        volumeRatio:
-            volumeData.volumeRatio,
 
-        volumeSpike:
-            volumeData.volumeSpike,
+        // ---------------------------------------------
+        // CANDLE
+        // ---------------------------------------------
 
-        pressure:
-            volumeData.pressure,
+        bullishCandle,
+
+        bearishCandle,
+
+
+        // ---------------------------------------------
+        // VOLUME
+        // ---------------------------------------------
+
+        volumeRatio,
+
+        volumeSpike,
+
+        pressure,
 
         dump,
 
-        // Profile
-        pocIndex,
-        binSize
+
+        // ---------------------------------------------
+        // META
+        // ---------------------------------------------
+
+        candleCount:
+            normalizedCandles.length,
+
+        latestDate:
+            current.date ?? null
     };
 }
