@@ -1,6 +1,6 @@
 // =====================================================
 // MONEY STYLE SCANNER
-// Cloudflare Worker → Zapi IDX
+// Cloudflare Worker -> Zapi IDX
 // =====================================================
 
 const ZAPI_URL =
@@ -13,22 +13,27 @@ const CORS = {
 };
 
 function json(data, status = 200) {
-  return new Response(JSON.stringify(data, null, 2), {
-    status,
-    headers: {
-      ...CORS,
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-    },
-  });
+  return new Response(
+    JSON.stringify(data, null, 2),
+    {
+      status,
+      headers: {
+        ...CORS,
+        "Content-Type":
+          "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
+    }
+  );
 }
 
 export default {
+
   async fetch(request, env) {
 
-    // =====================================================
-    // CORS
-    // =====================================================
+    // =================================================
+    // OPTIONS
+    // =================================================
 
     if (request.method === "OPTIONS") {
       return new Response(null, {
@@ -38,9 +43,9 @@ export default {
     }
 
 
-    // =====================================================
+    // =================================================
     // METHOD
-    // =====================================================
+    // =================================================
 
     if (request.method !== "GET") {
       return json({
@@ -49,15 +54,17 @@ export default {
     }
 
 
-    // =====================================================
-    // API KEY
-    // =====================================================
+    // =================================================
+    // SECRET
+    // =================================================
 
-    const apiKey = env.ZAPI_API_KEY;
+    const apiKey =
+      env.ZAPI_API_KEY;
 
     if (!apiKey) {
       return json({
-        error: "ZAPI_API_KEY belum tersedia di Worker",
+        error:
+          "ZAPI_API_KEY belum tersedia di Worker",
       }, 500);
     }
 
@@ -68,15 +75,12 @@ export default {
         new URL(request.url);
 
 
-      // ===================================================
+      // =================================================
       // PARAMETER
-      // ===================================================
+      // =================================================
 
       const path =
         incoming.searchParams.get("path");
-
-      const query =
-        incoming.searchParams.get("query");
 
       const code =
         incoming.searchParams.get("code");
@@ -90,23 +94,28 @@ export default {
       const start =
         incoming.searchParams.get("start");
 
+      const query =
+        incoming.searchParams.get("query");
 
-      // ===================================================
-      // PATH WAJIB
-      // ===================================================
+
+      // =================================================
+      // PATH
+      // =================================================
 
       if (!path) {
         return json({
-          error: "Parameter path kosong",
+          error:
+            "Parameter path kosong",
+
           example:
             "?path=ISI_ENDPOINT&code=BBCA&length=150",
         }, 400);
       }
 
 
-      // ===================================================
-      // TARGET ZAPI
-      // ===================================================
+      // =================================================
+      // TARGET
+      // =================================================
 
       const target =
         new URL(ZAPI_URL);
@@ -118,35 +127,25 @@ export default {
       );
 
 
-      // ===================================================
-      // QUERY
-      // ===================================================
-
-      if (query) {
-        target.searchParams.set(
-          "query",
-          query
-        );
-      }
-
-
-      // ===================================================
+      // =================================================
       // CODE
-      // ===================================================
+      // =================================================
 
       if (code) {
+
         target.searchParams.set(
           "code",
-          code.toUpperCase()
+          code.trim().toUpperCase()
         );
       }
 
 
-      // ===================================================
+      // =================================================
       // DATE
-      // ===================================================
+      // =================================================
 
       if (date) {
+
         target.searchParams.set(
           "date",
           date
@@ -154,13 +153,13 @@ export default {
       }
 
 
-      // ===================================================
+      // =================================================
       // LENGTH
-      // ===================================================
+      // =================================================
 
       if (length) {
 
-        let n =
+        const n =
           Number(length);
 
         if (
@@ -168,27 +167,26 @@ export default {
           n > 0
         ) {
 
-          n =
-            Math.min(
-              Math.floor(n),
-              1000
-            );
-
           target.searchParams.set(
             "length",
-            String(n)
+            String(
+              Math.min(
+                Math.floor(n),
+                1000
+              )
+            )
           );
         }
       }
 
 
-      // ===================================================
+      // =================================================
       // START
-      // ===================================================
+      // =================================================
 
       if (start) {
 
-        let n =
+        const n =
           Number(start);
 
         if (
@@ -198,25 +196,36 @@ export default {
 
           target.searchParams.set(
             "start",
-            String(Math.floor(n))
+            String(
+              Math.floor(n)
+            )
           );
         }
       }
 
 
-      // ===================================================
-      // LOG
-      // =====================================================
+      // =================================================
+      // QUERY
+      // =================================================
+
+      if (query) {
+
+        target.searchParams.set(
+          "query",
+          query
+        );
+      }
+
+
+      // =================================================
+      // REQUEST
+      // =================================================
 
       console.log(
         "ZAPI REQUEST:",
         target.toString()
       );
 
-
-      // =====================================================
-      // REQUEST ZAPI
-      // =====================================================
 
       const upstream =
         await fetch(
@@ -235,9 +244,9 @@ export default {
         );
 
 
-      // =====================================================
+      // =================================================
       // RESPONSE
-      // =====================================================
+      // =================================================
 
       const body =
         await upstream.text();
@@ -271,10 +280,6 @@ export default {
 
     } catch (error) {
 
-      // =====================================================
-      // WORKER ERROR
-      // =====================================================
-
       return json({
         error:
           "Worker gagal menghubungi Zapi",
@@ -282,6 +287,7 @@ export default {
         message:
           error?.message ||
           String(error),
+
       }, 502);
     }
   },
