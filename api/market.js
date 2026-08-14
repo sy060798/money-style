@@ -1,769 +1,237 @@
 // =====================================================
 // MONEY STYLE SCANNER
-// api/market.js
-// ZAPI IDX VIA PROXY
+// CLOUDFLARE WORKER
+// ZAPI IDX CORS PROXY
 // =====================================================
 
-
-// =====================================================
-// PROXY URL
-// =====================================================
-//
-// NANTI ISI DENGAN URL BACKEND / CLOUDFLARE WORKER
-//
-// Contoh:
-// https://money-style-api.namauser.workers.dev
-//
-// JANGAN lagi masukkan API KEY ZAPI di sini.
-// =====================================================
-
-const PROXY_URL =
+const ZAPI_BASE_URL =
     "https://zpi.web.id";
 
 
 // =====================================================
-// SETTINGS
+// CORS
 // =====================================================
 
-const SETTINGS = {
+const CORS_HEADERS = {
 
-    // Endpoint yang dipanggil oleh proxy
-    path:
-        "TradingSummary/GetStockSummary",
+    "Access-Control-Allow-Origin":
+        "*",
 
-    // Jumlah data
-    length:
-        1000,
+    "Access-Control-Allow-Methods":
+        "GET, OPTIONS",
 
-    start:
-        0,
+    "Access-Control-Allow-Headers":
+        "Content-Type, Authorization",
 
-    // Cache browser
-    cacheDuration:
-        30 * 1000
+    "Access-Control-Max-Age":
+        "86400"
+
 };
 
 
 // =====================================================
-// CACHE
+// RESPONSE
 // =====================================================
 
-const cache =
-    new Map();
+function corsResponse(
+    body,
+    status = 200,
+    extraHeaders = {}
+) {
 
+    const headers =
+        new Headers({
 
-// =====================================================
-// NORMALIZE TICKER
-// =====================================================
+            ...CORS_HEADERS,
 
-function normalizeTicker(ticker) {
+            ...extraHeaders,
 
-    return String(ticker || "")
-        .trim()
-        .toUpperCase()
-        .replace(/\s+/g, "");
-
-}
-
-
-// =====================================================
-// NUMBER
-// =====================================================
-
-function toNumber(value) {
-
-    if (
-        value === null ||
-        value === undefined ||
-        value === ""
-    ) {
-        return NaN;
-    }
-
-
-    if (
-        typeof value === "number"
-    ) {
-        return value;
-    }
-
-
-    const text =
-        String(value)
-            .replace(/\./g, "")
-            .replace(/,/g, ".")
-            .replace(/%/g, "")
-            .trim();
-
-
-    return Number(text);
-
-}
-
-
-// =====================================================
-// EXTRACT ARRAY
-// =====================================================
-
-function extractRows(data) {
-
-    if (
-        Array.isArray(data)
-    ) {
-        return data;
-    }
-
-
-    if (
-        Array.isArray(data?.data)
-    ) {
-        return data.data;
-    }
-
-
-    if (
-        Array.isArray(data?.data?.data)
-    ) {
-        return data.data.data;
-    }
-
-
-    if (
-        Array.isArray(data?.result)
-    ) {
-        return data.result;
-    }
-
-
-    if (
-        Array.isArray(data?.results)
-    ) {
-        return data.results;
-    }
-
-
-    return [];
-
-}
-
-
-// =====================================================
-// FIND FIELD
-// =====================================================
-
-function findField(row, names) {
-
-    if (!row) {
-        return null;
-    }
-
-
-    for (
-        const name of names
-    ) {
-
-        if (
-            row[name] !== undefined &&
-            row[name] !== null
-        ) {
-
-            return row[name];
-
-        }
-
-    }
-
-
-    return null;
-
-}
-
-
-// =====================================================
-// PROXY REQUEST
-// =====================================================
-
-async function apiRequest(ticker) {
-
-    if (
-        !PROXY_URL ||
-        PROXY_URL.includes(
-            "GANTI-DENGAN"
-        )
-    ) {
-
-        throw new Error(
-            "PROXY_URL belum diisi. Buat proxy Cloudflare Worker terlebih dahulu."
-        );
-
-    }
-
-
-    const params =
-        new URLSearchParams({
-
-            code:
-                ticker,
-
-            path:
-                SETTINGS.path,
-
-            length:
-                String(
-                    SETTINGS.length
-                ),
-
-            start:
-                String(
-                    SETTINGS.start
-                )
+            "Content-Type":
+                "application/json; charset=utf-8"
 
         });
 
 
-    const url =
-        `${PROXY_URL}/stock?${params.toString()}`;
-
-
-    const response =
-        await fetch(
-            url,
-            {
-                method: "GET",
-
-                headers: {
-                    "Accept":
-                        "application/json"
-                }
-            }
-        );
-
-
-    let data;
-
-
-    try {
-
-        data =
-            await response.json();
-
-    } catch {
-
-        throw new Error(
-            `Proxy tidak mengembalikan JSON. HTTP ${response.status}`
-        );
-
-    }
-
-
-    if (
-        !response.ok
-    ) {
-
-        throw new Error(
-
-            data?.message ||
-            data?.error ||
-            `Proxy HTTP ${response.status}`
-
-        );
-
-    }
-
-
-    if (
-        data?.error
-    ) {
-
-        throw new Error(
-            data.error
-        );
-
-    }
-
-
-    return data;
-
+    return new Response(
+        body,
+        {
+            status,
+            headers
+        }
+    );
 }
 
 
 // =====================================================
-// GET MARKET DATA
+// WORKER
 // =====================================================
 
-export async function getMarketData(ticker) {
+export default {
 
-    const cleanTicker =
-        normalizeTicker(ticker);
-
-
-    if (!cleanTicker) {
-
-        throw new Error(
-            "Ticker kosong"
-        );
-
-    }
-
-
-    // =================================================
-    // CACHE
-    // =================================================
-
-    const cached =
-        cache.get(
-            cleanTicker
-        );
-
-
-    if (
-        cached &&
-        Date.now() -
-            cached.time <
-            SETTINGS.cacheDuration
+    async fetch(
+        request,
+        env
     ) {
 
-        return cached.data;
+        // ---------------------------------------------
+        // OPTIONS / PREFLIGHT
+        // ---------------------------------------------
 
-    }
+        if (
+            request.method ===
+            "OPTIONS"
+        ) {
 
+            return new Response(
+                null,
+                {
+                    status: 204,
+                    headers:
+                        CORS_HEADERS
+                }
+            );
 
-    // =================================================
-    // REQUEST
-    // =================================================
-
-    const response =
-        await apiRequest(
-            cleanTicker
-        );
-
-
-    console.log(
-        `[ZAPI PROXY] ${cleanTicker}:`,
-        response
-    );
-
-
-    // =================================================
-    // EXTRACT DATA
-    // =================================================
-
-    const rows =
-        extractRows(
-            response
-        );
+        }
 
 
-    if (
-        rows.length === 0
-    ) {
+        // ---------------------------------------------
+        // HANYA GET
+        // ---------------------------------------------
 
-        throw new Error(
+        if (
+            request.method !==
+            "GET"
+        ) {
 
-            `${cleanTicker}: data IDX tidak ditemukan dari proxy.`
+            return corsResponse(
+                JSON.stringify({
+                    error:
+                        "Method not allowed"
+                }),
+                405
+            );
 
-        );
-
-    }
-
-
-    // =================================================
-    // CARI STOCK
-    // =================================================
-
-    const stock =
-        rows.find(
-            row => {
-
-                const code =
-                    normalizeTicker(
-
-                        findField(
-                            row,
-                            [
-                                "kodeEmiten",
-                                "KodeEmiten",
-                                "stockCode",
-                                "StockCode",
-                                "code",
-                                "Code",
-                                "symbol",
-                                "Symbol"
-                            ]
-                        )
-
-                    );
+        }
 
 
-                return (
-                    code ===
-                    cleanTicker
-                );
+        // ---------------------------------------------
+        // API KEY
+        // ---------------------------------------------
 
-            }
-        ) ||
-        rows[0];
+        const apiKey =
+            env.ZAPI_API_KEY;
 
 
-    // =================================================
-    // PRICE
-    // =================================================
+        if (!apiKey) {
 
-    const price =
-        toNumber(
+            return corsResponse(
+                JSON.stringify({
+                    error:
+                        "ZAPI_API_KEY belum dikonfigurasi di Cloudflare Worker"
+                }),
+                500
+            );
 
-            findField(
-                stock,
-                [
-                    "close",
-                    "Close",
-                    "last",
-                    "Last",
-                    "price",
-                    "Price",
-                    "lastPrice",
-                    "LastPrice",
-                    "harga",
-                    "Harga",
-                    "closePrice",
-                    "ClosePrice"
-                ]
-            )
-
-        );
+        }
 
 
-    // =================================================
-    // CHANGE %
-    // =================================================
+        // ---------------------------------------------
+        // URL REQUEST
+        // ---------------------------------------------
 
-    const changePercent =
-        toNumber(
-
-            findField(
-                stock,
-                [
-                    "changePercent",
-                    "ChangePercent",
-                    "changePct",
-                    "ChangePct",
-                    "percentChange",
-                    "PercentChange",
-                    "persentasePerubahan",
-                    "PersentasePerubahan"
-                ]
-            )
-
-        );
+        const incomingUrl =
+            new URL(
+                request.url
+            );
 
 
-    // =================================================
-    // HISTORICAL OHLCV
-    // =================================================
+        // ---------------------------------------------
+        // PROXY KE ZAPI
+        // ---------------------------------------------
 
-    const bars =
-        rows
-            .map(
-                row => {
-
-                    const open =
-                        toNumber(
-
-                            findField(
-                                row,
-                                [
-                                    "open",
-                                    "Open",
-                                    "openPrice",
-                                    "OpenPrice"
-                                ]
-                            )
-
-                        );
+        const upstreamUrl =
+            new URL(
+                "/api/finance/idx/raw",
+                ZAPI_BASE_URL
+            );
 
 
-                    const high =
-                        toNumber(
+        // Copy query:
+        //
+        // ?path=TradingSummary%2FGetStockSummary
+        // &query=length%3D1000%26start%3D0%26kodeEmiten%3DBBCA
+        //
 
-                            findField(
-                                row,
-                                [
-                                    "high",
-                                    "High",
-                                    "highPrice",
-                                    "HighPrice"
-                                ]
-                            )
-
-                        );
+        upstreamUrl.search =
+            incomingUrl.search;
 
 
-                    const low =
-                        toNumber(
+        // ---------------------------------------------
+        // REQUEST KE ZAPI
+        // ---------------------------------------------
 
-                            findField(
-                                row,
-                                [
-                                    "low",
-                                    "Low",
-                                    "lowPrice",
-                                    "LowPrice"
-                                ]
-                            )
-
-                        );
+        let upstreamResponse;
 
 
-                    const close =
-                        toNumber(
+        try {
 
-                            findField(
-                                row,
-                                [
-                                    "close",
-                                    "Close",
-                                    "last",
-                                    "Last",
-                                    "price",
-                                    "Price"
-                                ]
-                            )
+            upstreamResponse =
+                await fetch(
+                    upstreamUrl.toString(),
+                    {
 
-                        );
+                        method: "GET",
 
+                        headers: {
 
-                    const volume =
-                        toNumber(
+                            "Accept":
+                                "application/json",
 
-                            findField(
-                                row,
-                                [
-                                    "volume",
-                                    "Volume",
-                                    "totalVolume",
-                                    "TotalVolume",
-                                    "volumeValue",
-                                    "VolumeValue"
-                                ]
-                            )
+                            "Authorization":
+                                `Bearer ${apiKey}`
 
-                        );
-
-
-                    if (
-                        !Number.isFinite(open) ||
-                        !Number.isFinite(high) ||
-                        !Number.isFinite(low) ||
-                        !Number.isFinite(close) ||
-                        !Number.isFinite(volume)
-                    ) {
-
-                        return null;
+                        }
 
                     }
+                );
+
+        } catch (error) {
+
+            return corsResponse(
+                JSON.stringify({
+                    error:
+                        "Gagal menghubungi Zapi",
+                    message:
+                        error?.message ||
+                        "Network error"
+                }),
+                502
+            );
+
+        }
 
 
-                    return {
+        // ---------------------------------------------
+        // AMBIL RESPONSE
+        // ---------------------------------------------
 
-                        datetime:
-                            findField(
-                                row,
-                                [
-                                    "datetime",
-                                    "date",
-                                    "Date",
-                                    "tanggal",
-                                    "Tanggal",
-                                    "tradingDate",
-                                    "TradingDate"
-                                ]
-                            ),
-
-                        open,
-                        high,
-                        low,
-                        close,
-                        volume
-
-                    };
-
-                }
-            )
-            .filter(Boolean);
+        const body =
+            await upstreamResponse.text();
 
 
-    // =================================================
-    // PRICE FALLBACK
-    // =================================================
+        // ---------------------------------------------
+        // RESPONSE KE BROWSER
+        // ---------------------------------------------
 
-    const finalPrice =
-        Number.isFinite(price)
-            ? price
-            : bars.length > 0
-                ? bars[0].close
-                : NaN;
-
-
-    if (
-        !Number.isFinite(
-            finalPrice
-        )
-    ) {
-
-        throw new Error(
-
-            `${cleanTicker}: harga saham tidak ditemukan.`
-
-        );
-
-    }
-
-
-    // =================================================
-    // HISTORICAL VALIDATION
-    // =================================================
-
-    if (
-        bars.length === 0
-    ) {
-
-        throw new Error(
-
-            `${cleanTicker}: endpoint Zapi ini tidak memberikan OHLCV historical. Profile/POC membutuhkan data candle historical.`
-
-        );
-
-    }
-
-
-    // =================================================
-    // URUTKAN CANDLE
-    // =================================================
-    //
-    // Engine kita membutuhkan:
-    //
-    // bars[0] = candle terbaru
-    //
-    // =================================================
-
-    bars.sort(
-        (a, b) => {
-
-            const dateA =
-                new Date(
-                    a.datetime
-                ).getTime();
-
-            const dateB =
-                new Date(
-                    b.datetime
-                ).getTime();
-
-
-            if (
-                !Number.isFinite(
-                    dateA
-                ) ||
-                !Number.isFinite(
-                    dateB
-                )
-            ) {
-
-                return 0;
-
+        return corsResponse(
+            body,
+            upstreamResponse.status,
+            {
+                "Cache-Control":
+                    "no-store"
             }
+        );
 
+    }
 
-            return dateB - dateA;
-
-        }
-    );
-
-
-    // =================================================
-    // RESULT
-    // =================================================
-
-    const result = {
-
-        ticker:
-            cleanTicker,
-
-        price:
-            finalPrice,
-
-        changePercent:
-            Number.isFinite(
-                changePercent
-            )
-                ? changePercent
-                : 0,
-
-        bars,
-
-        meta: {
-
-            symbol:
-                cleanTicker,
-
-            exchange:
-                "Indonesia Stock Exchange",
-
-            currency:
-                "IDR",
-
-            source:
-                "Zapi IDX via Proxy",
-
-            endpoint:
-                SETTINGS.path,
-
-            live:
-                true,
-
-            candleCount:
-                bars.length
-
-        },
-
-        raw:
-            response
-
-    };
-
-
-    // =================================================
-    // CACHE
-    // =================================================
-
-    cache.set(
-
-        cleanTicker,
-
-        {
-
-            time:
-                Date.now(),
-
-            data:
-                result
-
-        }
-
-    );
-
-
-    return result;
-
-}
-
-
-// =====================================================
-// CLEAR CACHE
-// =====================================================
-
-export function clearMarketCache() {
-
-    cache.clear();
-
-}
+};
