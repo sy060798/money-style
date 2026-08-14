@@ -1,5 +1,5 @@
 const ZAPI_URL =
-  "https://zpi.web.id/api/finance/idx/stock-history";
+  "https://api.zpi.web.id/v1/finance:idx/stock-history";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
