@@ -1,19 +1,36 @@
 // =====================================================
 // MONEY STYLE SCANNER
 // api/market.js
-// INDONESIA STOCKS / XIDX
 // =====================================================
 
-const API_KEY = "53c7109a9a114a65847c1f15afa69db1";
+const API_KEY =
+    "53c7109a9a114a65847c1f15afa69db1";
 
-const BASE_URL = "https://api.twelvedata.com";
+const BASE_URL =
+    "https://api.twelvedata.com";
 
-const SETTINGS = {
-    exchange: "XIDX",
-    country: "Indonesia",
+
+// =====================================================
+// SETTINGS
+// =====================================================
+
+const MARKET_SETTINGS = {
     interval: "1day",
-    outputsize: 180
+    outputsize: 180,
+
+    // Bursa Indonesia
+    micCode: "XIDX",
+
+    // Cache symbol supaya tidak search berulang
+    cacheDuration: 24 * 60 * 60 * 1000
 };
+
+
+// =====================================================
+// SYMBOL CACHE
+// =====================================================
+
+const symbolCache = new Map();
 
 
 // =====================================================
@@ -22,11 +39,7 @@ const SETTINGS = {
 
 function normalizeTicker(ticker) {
 
-    if (!ticker) {
-        throw new Error("Ticker kosong");
-    }
-
-    return String(ticker)
+    return String(ticker || "")
         .trim()
         .toUpperCase()
         .replace(/\s+/g, "");
@@ -34,27 +47,19 @@ function normalizeTicker(ticker) {
 
 
 // =====================================================
-// CHECK API KEY
+// API REQUEST
 // =====================================================
 
-function checkAPIKey() {
+async function apiRequest(endpoint, params) {
 
-    if (
-        !API_KEY ||
-        API_KEY === "ISI_API_KEY_TWELVE_DATA_DI_SINI"
-    ) {
-        throw new Error(
-            "API key Twelve Data belum diisi"
-        );
-    }
-}
+    const searchParams =
+        new URLSearchParams({
+            ...params,
+            apikey: API_KEY
+        });
 
-
-// =====================================================
-// FETCH JSON
-// =====================================================
-
-async function fetchJSON(url) {
+    const url =
+        `${BASE_URL}${endpoint}?${searchParams.toString()}`;
 
     const response =
         await fetch(url);
@@ -62,17 +67,12 @@ async function fetchJSON(url) {
     let data;
 
     try {
-
-        data =
-            await response.json();
-
+        data = await response.json();
     } catch {
-
         throw new Error(
-            `Response API tidak valid. HTTP ${response.status}`
+            `Response API tidak valid (${response.status})`
         );
     }
-
 
     if (!response.ok) {
 
@@ -82,56 +82,6 @@ async function fetchJSON(url) {
         );
     }
 
-
-    return data;
-}
-
-
-// =====================================================
-// FIND STOCK VIA /STOCKS
-// =====================================================
-//
-// Ini sengaja memakai /stocks,
-// bukan menebak symbol.
-//
-// Twelve Data mendokumentasikan /stocks sebagai
-// daftar seluruh ticker saham yang tersedia.
-// Filter bisa menggunakan symbol/exchange/country.
-//
-// =====================================================
-
-async function findIndonesiaStock(ticker) {
-
-    const params =
-        new URLSearchParams({
-
-            symbol:
-                ticker,
-
-            exchange:
-                SETTINGS.exchange,
-
-            country:
-                SETTINGS.country,
-
-            apikey:
-                API_KEY
-
-        });
-
-
-    const url =
-        `${BASE_URL}/stocks?${params.toString()}`;
-
-
-    const data =
-        await fetchJSON(url);
-
-
-    // -------------------------------------------------
-    // ERROR
-    // -------------------------------------------------
-
     if (
         data?.status === "error" ||
         data?.code
@@ -139,205 +89,278 @@ async function findIndonesiaStock(ticker) {
 
         throw new Error(
             data?.message ||
-            "Gagal mencari daftar saham"
+            "Twelve Data API error"
+        );
+    }
+
+    return data;
+}
+
+
+// =====================================================
+// CARI SYMBOL IDX
+// =====================================================
+//
+// Kita tidak lagi mengasumsikan:
+//
+// BBRI + XIDX = valid.
+//
+// Twelve Data punya endpoint symbol_search.
+// Hasilnya kita filter berdasarkan:
+// - ticker
+// - exchange / MIC
+// - Indonesia
+//
+// =====================================================
+
+async function findIDXSymbol(ticker) {
+
+    const cleanTicker =
+        normalizeTicker(ticker);
+
+    if (!cleanTicker) {
+
+        throw new Error(
+            "Ticker kosong"
         );
     }
 
 
-    // -------------------------------------------------
-    // RESPONSE /stocks
-    // -------------------------------------------------
+    // -----------------------------------------------
+    // CACHE
+    // -----------------------------------------------
 
-    const stocks =
-        Array.isArray(data)
-            ? data
-            : Array.isArray(data?.data)
-                ? data.data
+    const cached =
+        symbolCache.get(cleanTicker);
+
+    if (
+        cached &&
+        Date.now() - cached.time <
+            MARKET_SETTINGS.cacheDuration
+    ) {
+
+        return cached.symbol;
+    }
+
+
+    // -----------------------------------------------
+    // SYMBOL SEARCH
+    // -----------------------------------------------
+
+    const data =
+        await apiRequest(
+            "/symbol_search",
+            {
+                symbol: cleanTicker
+            }
+        );
+
+
+    const items =
+        Array.isArray(data?.data)
+            ? data.data
+            : Array.isArray(data)
+                ? data
                 : [];
 
 
-    if (stocks.length === 0) {
+    // -----------------------------------------------
+    // FILTER INDONESIA
+    // -----------------------------------------------
 
-        throw new Error(
-            `${ticker} tidak tersedia di Twelve Data untuk XIDX`
-        );
-    }
-
-
-    // -------------------------------------------------
-    // CARI EXACT MATCH
-    // -------------------------------------------------
-
-    const exact =
-        stocks.find(stock => {
+    const candidates =
+        items.filter(item => {
 
             const symbol =
+                normalizeTicker(
+                    item?.symbol
+                );
+
+            const exchange =
                 String(
-                    stock.symbol || ""
+                    item?.exchange || ""
+                ).toUpperCase();
+
+            const mic =
+                String(
+                    item?.mic_code || ""
+                ).toUpperCase();
+
+            const country =
+                String(
+                    item?.country || ""
+                ).toUpperCase();
+
+
+            const symbolMatch =
+                symbol === cleanTicker;
+
+
+            const exchangeMatch =
+                exchange.includes("INDONESIA") ||
+                exchange.includes("IDX") ||
+                exchange.includes("JAKARTA") ||
+                mic === MARKET_SETTINGS.micCode;
+
+
+            const countryMatch =
+                country === "INDONESIA" ||
+                country === "ID";
+
+
+            return (
+                symbolMatch &&
+                (
+                    exchangeMatch ||
+                    countryMatch
                 )
-                .trim()
-                .toUpperCase();
-
-            return symbol === ticker;
-
+            );
         });
 
 
-    if (!exact) {
+    // -----------------------------------------------
+    // FALLBACK
+    // -----------------------------------------------
 
-        throw new Error(
-            `${ticker} tidak ditemukan sebagai ticker XIDX yang valid`
-        );
-    }
-
-
-    return exact;
-}
+    let selected =
+        candidates[0];
 
 
-// =====================================================
-// GET TIME SERIES
-// =====================================================
+    // Kalau search tidak memberikan hasil
+    // yang cukup spesifik, cari lagi dengan
+    // ticker + Indonesia.
+    if (!selected) {
 
-async function getTimeSeries(
-    symbol
-) {
-
-    const params =
-        new URLSearchParams({
-
-            symbol:
-                symbol,
-
-            exchange:
-                SETTINGS.exchange,
-
-            interval:
-                SETTINGS.interval,
-
-            outputsize:
-                String(
-                    SETTINGS.outputsize
-                ),
-
-            order:
-                "desc",
-
-            apikey:
-                API_KEY
-
-        });
-
-
-    const url =
-        `${BASE_URL}/time_series?${params.toString()}`;
-
-
-    const data =
-        await fetchJSON(url);
-
-
-    // -------------------------------------------------
-    // API ERROR
-    // -------------------------------------------------
-
-    if (
-        data?.status === "error" ||
-        data?.code
-    ) {
-
-        throw new Error(
-            data?.message ||
-            "Time series error"
-        );
-    }
-
-
-    // -------------------------------------------------
-    // NO DATA
-    // -------------------------------------------------
-
-    if (
-        !Array.isArray(data?.values) ||
-        data.values.length === 0
-    ) {
-
-        throw new Error(
-            `Tidak ada data candle untuk ${symbol}`
-        );
-    }
-
-
-    return data;
-}
-
-
-// =====================================================
-// NORMALIZE OHLCV
-// =====================================================
-
-function normalizeBars(
-    values,
-    ticker
-) {
-
-    const bars =
-        values
-            .map(row => ({
-
-                datetime:
-                    row.datetime,
-
-                open:
-                    Number(row.open),
-
-                high:
-                    Number(row.high),
-
-                low:
-                    Number(row.low),
-
-                close:
-                    Number(row.close),
-
-                volume:
-                    Number(row.volume)
-
-            }))
-            .filter(bar =>
-
-                Number.isFinite(
-                    bar.open
-                ) &&
-
-                Number.isFinite(
-                    bar.high
-                ) &&
-
-                Number.isFinite(
-                    bar.low
-                ) &&
-
-                Number.isFinite(
-                    bar.close
-                ) &&
-
-                Number.isFinite(
-                    bar.volume
-                )
-
+        const retry =
+            await apiRequest(
+                "/symbol_search",
+                {
+                    symbol:
+                        `${cleanTicker}:IDX`
+                }
             );
 
 
-    if (bars.length === 0) {
+        const retryItems =
+            Array.isArray(retry?.data)
+                ? retry.data
+                : Array.isArray(retry)
+                    ? retry
+                    : [];
+
+
+        selected =
+            retryItems.find(item => {
+
+                const symbol =
+                    normalizeTicker(
+                        item?.symbol
+                    );
+
+                const mic =
+                    String(
+                        item?.mic_code || ""
+                    ).toUpperCase();
+
+                const exchange =
+                    String(
+                        item?.exchange || ""
+                    ).toUpperCase();
+
+                return (
+                    symbol === cleanTicker &&
+                    (
+                        mic ===
+                            MARKET_SETTINGS.micCode ||
+                        exchange.includes(
+                            "INDONESIA"
+                        ) ||
+                        exchange.includes(
+                            "IDX"
+                        )
+                    )
+                );
+            });
+    }
+
+
+    // -----------------------------------------------
+    // TIDAK DITEMUKAN
+    // -----------------------------------------------
+
+    if (!selected) {
 
         throw new Error(
-            `Data OHLCV ${ticker} tidak valid`
+            `${cleanTicker} tidak ditemukan sebagai saham Indonesia di Twelve Data`
         );
     }
 
 
-    return bars;
+    // -----------------------------------------------
+    // SYMBOL FINAL
+    // -----------------------------------------------
+
+    const resolvedSymbol =
+        selected.symbol;
+
+
+    symbolCache.set(
+        cleanTicker,
+        {
+            symbol:
+                resolvedSymbol,
+            time:
+                Date.now()
+        }
+    );
+
+
+    return resolvedSymbol;
+}
+
+
+// =====================================================
+// VALIDATE BAR
+// =====================================================
+
+function normalizeBar(row) {
+
+    const bar = {
+
+        datetime:
+            row?.datetime,
+
+        open:
+            Number(row?.open),
+
+        high:
+            Number(row?.high),
+
+        low:
+            Number(row?.low),
+
+        close:
+            Number(row?.close),
+
+        volume:
+            Number(row?.volume)
+
+    };
+
+
+    if (
+        !Number.isFinite(bar.open) ||
+        !Number.isFinite(bar.high) ||
+        !Number.isFinite(bar.low) ||
+        !Number.isFinite(bar.close) ||
+        !Number.isFinite(bar.volume)
+    ) {
+
+        return null;
+    }
+
+
+    return bar;
 }
 
 
@@ -345,105 +368,105 @@ function normalizeBars(
 // GET MARKET DATA
 // =====================================================
 
-export async function getMarketData(
-    ticker
-) {
+export async function getMarketData(ticker) {
 
-    checkAPIKey();
-
-
-    const inputTicker =
+    const cleanTicker =
         normalizeTicker(ticker);
 
 
-    // =================================================
-    // STEP 1
-    // VALIDASI TICKER XIDX
-    // =================================================
-
-    let stock;
-
-    try {
-
-        stock =
-            await findIndonesiaStock(
-                inputTicker
-            );
-
-    } catch (error) {
+    if (!cleanTicker) {
 
         throw new Error(
-            `${inputTicker}: ${error.message}`
+            "Ticker kosong"
+        );
+    }
+
+
+    if (
+        !API_KEY ||
+        API_KEY.length < 10
+    ) {
+
+        throw new Error(
+            "API key Twelve Data belum valid"
         );
     }
 
 
     // =================================================
-    // SYMBOL RESMI
+    // 1. RESOLVE SYMBOL IDX
     // =================================================
 
-    const officialSymbol =
-        String(
-            stock.symbol
-        ).trim();
+    const resolvedSymbol =
+        await findIDXSymbol(
+            cleanTicker
+        );
 
 
-    if (!officialSymbol) {
+    // =================================================
+    // 2. REQUEST TIME SERIES
+    // =================================================
+
+    const data =
+        await apiRequest(
+            "/time_series",
+            {
+                symbol:
+                    resolvedSymbol,
+
+                interval:
+                    MARKET_SETTINGS.interval,
+
+                outputsize:
+                    String(
+                        MARKET_SETTINGS.outputsize
+                    ),
+
+                order:
+                    "desc"
+            }
+        );
+
+
+    // =================================================
+    // 3. VALIDASI
+    // =================================================
+
+    if (
+        !Array.isArray(data?.values) ||
+        data.values.length === 0
+    ) {
 
         throw new Error(
-            `${inputTicker}: symbol resmi tidak ditemukan`
+            `${cleanTicker}: tidak ada historical data`
         );
     }
 
 
     // =================================================
-    // STEP 2
-    // AMBIL HISTORICAL DATA
-    // =================================================
-
-    let data;
-
-    try {
-
-        data =
-            await getTimeSeries(
-                officialSymbol
-            );
-
-    } catch (error) {
-
-        throw new Error(
-            `${inputTicker}: ${error.message}`
-        );
-    }
-
-
-    // =================================================
-    // STEP 3
-    // NORMALIZE
+    // 4. NORMALIZE OHLCV
     // =================================================
 
     const bars =
-        normalizeBars(
-            data.values,
-            inputTicker
+        data.values
+            .map(normalizeBar)
+            .filter(Boolean);
+
+
+    if (bars.length === 0) {
+
+        throw new Error(
+            `${cleanTicker}: OHLCV tidak valid`
         );
+    }
 
 
     // =================================================
-    // CANDLE TERBARU
+    // 5. LATEST
     // =================================================
 
     const latest =
         bars[0];
-
-
-    if (!latest) {
-
-        throw new Error(
-            `${inputTicker}: candle terbaru tidak tersedia`
-        );
-    }
 
 
     const price =
@@ -451,7 +474,7 @@ export async function getMarketData(
 
 
     // =================================================
-    // CHANGE %
+    // 6. CHANGE %
     // =================================================
 
     let changePercent = 0;
@@ -459,10 +482,7 @@ export async function getMarketData(
 
     if (
         bars.length >= 2 &&
-        Number.isFinite(
-            bars[1].close
-        ) &&
-        bars[1].close !== 0
+        bars[1].close > 0
     ) {
 
         changePercent =
@@ -477,27 +497,15 @@ export async function getMarketData(
 
 
     // =================================================
-    // META
-    // =================================================
-
-    const meta =
-        data.meta || {};
-
-
-    // =================================================
-    // RETURN
+    // 7. RETURN
     // =================================================
 
     return {
 
-        // ticker input
         ticker:
-            inputTicker,
+            cleanTicker,
 
-        // ticker resmi API
-        symbol:
-            meta.symbol ||
-            officialSymbol,
+        resolvedSymbol,
 
         price,
 
@@ -507,44 +515,46 @@ export async function getMarketData(
 
         meta: {
 
-            name:
-                stock.name ||
-                meta.name ||
-                inputTicker,
+            symbol:
+                data.meta?.symbol ||
+                resolvedSymbol,
 
             exchange:
-                meta.exchange ||
-                stock.exchange ||
+                data.meta?.exchange ||
                 "Indonesia Stock Exchange",
 
             micCode:
-                meta.mic_code ||
-                stock.mic_code ||
-                "XIDX",
-
-            country:
-                stock.country ||
-                "Indonesia",
-
-            currency:
-                meta.currency ||
-                stock.currency ||
-                "IDR",
-
-            type:
-                meta.type ||
-                stock.type ||
-                "Common Stock",
+                data.meta?.mic_code ||
+                MARKET_SETTINGS.micCode,
 
             exchangeTimezone:
-                meta.exchange_timezone ||
+                data.meta?.exchange_timezone ||
                 "Asia/Jakarta",
 
+            currency:
+                data.meta?.currency ||
+                "IDR",
+
             interval:
-                meta.interval ||
-                SETTINGS.interval
+                data.meta?.interval ||
+                MARKET_SETTINGS.interval,
+
+            type:
+                data.meta?.type ||
+                "Common Stock"
 
         }
 
     };
+}
+
+
+// =====================================================
+// OPTIONAL:
+// CLEAR SYMBOL CACHE
+// =====================================================
+
+export function clearSymbolCache() {
+
+    symbolCache.clear();
 }
