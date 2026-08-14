@@ -14,8 +14,10 @@ const PROXY_URL =
 
 const SETTINGS = {
 
+    // Jumlah candle historical
     length: 150,
 
+    // Cache browser
     cacheDuration:
         30 * 1000
 
@@ -55,22 +57,30 @@ function toNumber(value) {
         value === undefined ||
         value === ""
     ) {
+
         return NaN;
+
     }
+
 
     if (
         typeof value === "number"
     ) {
+
         return value;
+
     }
+
 
     const text =
         String(value)
             .trim()
             .replace(/,/g, "");
 
+
     const number =
         Number(text);
+
 
     return number;
 
@@ -78,13 +88,14 @@ function toNumber(value) {
 
 
 // =====================================================
-// REQUEST KE WORKER
+// REQUEST KE CLOUDFLARE WORKER
 // =====================================================
 
 async function apiRequest(ticker) {
 
     const cleanTicker =
         normalizeTicker(ticker);
+
 
     if (!cleanTicker) {
 
@@ -96,7 +107,17 @@ async function apiRequest(ticker) {
 
 
     // =================================================
-    // ENDPOINT YANG SUDAH TERBUKTI BERHASIL
+    // REQUEST
+    // =================================================
+    //
+    // FORMAT WORKER:
+    //
+    // ?code=BBCA&length=150
+    //
+    // JANGAN menggunakan:
+    //
+    // ?path=...
+    //
     // =================================================
 
     const params =
@@ -123,6 +144,7 @@ async function apiRequest(ticker) {
 
     let response;
 
+
     try {
 
         response =
@@ -130,6 +152,7 @@ async function apiRequest(ticker) {
                 url,
                 {
                     method: "GET",
+
                     headers: {
                         "Accept":
                             "application/json"
@@ -137,28 +160,43 @@ async function apiRequest(ticker) {
                 }
             );
 
-    } catch (error) {
+    }
+
+    catch (error) {
 
         throw new Error(
-            `${cleanTicker}: gagal menghubungi Worker. ` +
+
+            `${cleanTicker}: gagal menghubungi Cloudflare Worker. ` +
             `${error?.message || ""}`
+
         );
 
     }
 
 
+    // =================================================
+    // RESPONSE TEXT
+    // =================================================
+
     const text =
         await response.text();
 
 
+    // =================================================
+    // PARSE JSON
+    // =================================================
+
     let data;
+
 
     try {
 
         data =
             JSON.parse(text);
 
-    } catch {
+    }
+
+    catch {
 
         throw new Error(
 
@@ -171,7 +209,13 @@ async function apiRequest(ticker) {
     }
 
 
-    if (!response.ok) {
+    // =================================================
+    // HTTP ERROR
+    // =================================================
+
+    if (
+        !response.ok
+    ) {
 
         throw new Error(
 
@@ -184,14 +228,16 @@ async function apiRequest(ticker) {
     }
 
 
+    // =================================================
+    // API ERROR
+    // =================================================
+
     if (
         data?.error
     ) {
 
         throw new Error(
-
             data.error
-
         );
 
     }
@@ -203,7 +249,22 @@ async function apiRequest(ticker) {
 
 
 // =====================================================
-// AMBIL ITEMS DARI RESPONSE
+// EXTRACT ITEMS
+// =====================================================
+//
+// Response Zapi yang kita gunakan:
+//
+// {
+//   "project": "finance:idx:stock-history",
+//   "data": {
+//      "provider": "idx",
+//      "dataset": "stock-history",
+//      "code": "BBCA",
+//      "count": 150,
+//      "items": [...]
+//
+// }
+//
 // =====================================================
 
 function extractItems(data) {
@@ -245,31 +306,69 @@ function extractItems(data) {
 
 
 // =====================================================
-// NORMALIZE CANDLE
+// NORMALIZE BAR
 // =====================================================
 
 function normalizeBar(row) {
 
     if (!row) {
+
         return null;
+
     }
 
 
+    // =================================================
+    // OHLC
+    // =================================================
+
     const open =
-        toNumber(row.open);
+        toNumber(
+            row.open
+        );
+
 
     const high =
-        toNumber(row.high);
+        toNumber(
+            row.high
+        );
+
 
     const low =
-        toNumber(row.low);
+        toNumber(
+            row.low
+        );
+
 
     const close =
-        toNumber(row.close);
+        toNumber(
+            row.close
+        );
+
+
+    // =================================================
+    // PREVIOUS CLOSE
+    // =================================================
+
+    const previous =
+        toNumber(
+            row.previous
+        );
+
+
+    // =================================================
+    // VOLUME
+    // =================================================
 
     const volume =
-        toNumber(row.volume);
+        toNumber(
+            row.volume
+        );
 
+
+    // =================================================
+    // VALIDASI
+    // =================================================
 
     if (
         !Number.isFinite(open) ||
@@ -283,6 +382,10 @@ function normalizeBar(row) {
 
     }
 
+
+    // =================================================
+    // RETURN CANDLE
+    // =================================================
 
     return {
 
@@ -299,6 +402,8 @@ function normalizeBar(row) {
         low,
 
         close,
+
+        previous,
 
         volume
 
@@ -343,6 +448,10 @@ export async function getMarketData(ticker) {
             SETTINGS.cacheDuration
     ) {
 
+        console.log(
+            `[MONEY STYLE] ${cleanTicker} menggunakan cache`
+        );
+
         return cached.data;
 
     }
@@ -369,7 +478,9 @@ export async function getMarketData(ticker) {
     // =================================================
 
     const items =
-        extractItems(response);
+        extractItems(
+            response
+        );
 
 
     if (
@@ -413,28 +524,41 @@ export async function getMarketData(ticker) {
 
 
     // =================================================
-    // RESPONSE ZAPI SUDAH URUT
+    // URUTKAN CANDLE
     // =================================================
     //
-    // Contoh response:
+    // Response Zapi:
     //
-    // 2026-08-14
-    // 2026-08-13
-    // 2026-08-12
+    // terbaru → lama
     //
-    // Engine signal membutuhkan candle terbaru
-    // di index terakhir.
+    // Engine kita membutuhkan:
     //
-    // Jadi kita balik menjadi:
+    // lama → terbaru
     //
-    // lama → baru
+    // Karena signal.js menggunakan:
+    //
+    // candles[candles.length - 1]
+    //
+    // sebagai candle terbaru.
     //
     // =================================================
 
     bars.sort(
-        (a, b) =>
-            new Date(a.date) -
-            new Date(b.date)
+        (a, b) => {
+
+            const dateA =
+                new Date(
+                    a.date
+                ).getTime();
+
+            const dateB =
+                new Date(
+                    b.date
+                ).getTime();
+
+            return dateA - dateB;
+
+        }
     );
 
 
@@ -443,7 +567,20 @@ export async function getMarketData(ticker) {
     // =================================================
 
     const latest =
-        bars[bars.length - 1];
+        bars[
+            bars.length - 1
+        ];
+
+
+    if (!latest) {
+
+        throw new Error(
+
+            `${cleanTicker}: candle terbaru tidak tersedia.`
+
+        );
+
+    }
 
 
     // =================================================
@@ -461,44 +598,54 @@ export async function getMarketData(ticker) {
     let changePercent = 0;
 
 
+    // Prioritas:
+    // previous dari Zapi
+
     if (
         Number.isFinite(
             latest.previous
-        )
+        ) &&
+        latest.previous !== 0
     ) {
 
-        if (
-            latest.previous !== 0
-        ) {
-
-            changePercent =
+        changePercent =
+            (
                 (
-                    (latest.close -
-                        latest.previous) /
+                    latest.close -
                     latest.previous
-                ) * 100;
-
-        }
+                ) /
+                latest.previous
+            ) * 100;
 
     }
+
+    // Fallback:
+    // candle sebelumnya
 
     else if (
         bars.length >= 2
     ) {
 
-        const previous =
-            bars[bars.length - 2];
+        const previousBar =
+            bars[
+                bars.length - 2
+            ];
 
 
         if (
-            previous.close !== 0
+            Number.isFinite(
+                previousBar.close
+            ) &&
+            previousBar.close !== 0
         ) {
 
             changePercent =
                 (
-                    (latest.close -
-                        previous.close) /
-                    previous.close
+                    (
+                        latest.close -
+                        previousBar.close
+                    ) /
+                    previousBar.close
                 ) * 100;
 
         }
@@ -582,6 +729,28 @@ export async function getMarketData(ticker) {
     );
 
 
+    // =================================================
+    // DEBUG
+    // =================================================
+
+    console.log(
+        `[MONEY STYLE] ${cleanTicker} selesai`,
+        {
+            price:
+                result.price,
+
+            changePercent:
+                result.changePercent,
+
+            bars:
+                result.bars.length,
+
+            latestDate:
+                latest.date
+        }
+    );
+
+
     return result;
 
 }
@@ -594,5 +763,9 @@ export async function getMarketData(ticker) {
 export function clearMarketCache() {
 
     marketCache.clear();
+
+    console.log(
+        "[MONEY STYLE] Market cache cleared"
+    );
 
 }
