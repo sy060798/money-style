@@ -1,13 +1,11 @@
 // =====================================================
 // MONEY STYLE SCANNER
 // api/market.js
+// YAHOO FINANCE - INDONESIA / IDX
 // =====================================================
 
-const API_KEY =
-    "53c7109a9a114a65847c1f15afa69db1";
-
 const BASE_URL =
-    "https://api.twelvedata.com";
+    "https://query1.finance.yahoo.com/v8/finance/chart";
 
 
 // =====================================================
@@ -15,22 +13,9 @@ const BASE_URL =
 // =====================================================
 
 const MARKET_SETTINGS = {
-    interval: "1day",
-    outputsize: 180,
-
-    // Bursa Indonesia
-    micCode: "XIDX",
-
-    // Cache symbol supaya tidak search berulang
-    cacheDuration: 24 * 60 * 60 * 1000
+    interval: "1d",
+    range: "1y"
 };
-
-
-// =====================================================
-// SYMBOL CACHE
-// =====================================================
-
-const symbolCache = new Map();
 
 
 // =====================================================
@@ -42,325 +27,82 @@ function normalizeTicker(ticker) {
     return String(ticker || "")
         .trim()
         .toUpperCase()
-        .replace(/\s+/g, "");
+        .replace(/\s+/g, "")
+        .replace(".JK", "");
 }
 
 
 // =====================================================
-// API REQUEST
+// YAHOO SYMBOL
 // =====================================================
 
-async function apiRequest(endpoint, params) {
+function toYahooSymbol(ticker) {
 
-    const searchParams =
-        new URLSearchParams({
-            ...params,
-            apikey: API_KEY
-        });
-
-    const url =
-        `${BASE_URL}${endpoint}?${searchParams.toString()}`;
-
-    const response =
-        await fetch(url);
-
-    let data;
-
-    try {
-        data = await response.json();
-    } catch {
-        throw new Error(
-            `Response API tidak valid (${response.status})`
-        );
-    }
-
-    if (!response.ok) {
-
-        throw new Error(
-            data?.message ||
-            `HTTP ${response.status}`
-        );
-    }
-
-    if (
-        data?.status === "error" ||
-        data?.code
-    ) {
-
-        throw new Error(
-            data?.message ||
-            "Twelve Data API error"
-        );
-    }
-
-    return data;
-}
-
-
-// =====================================================
-// CARI SYMBOL IDX
-// =====================================================
-//
-// Kita tidak lagi mengasumsikan:
-//
-// BBRI + XIDX = valid.
-//
-// Twelve Data punya endpoint symbol_search.
-// Hasilnya kita filter berdasarkan:
-// - ticker
-// - exchange / MIC
-// - Indonesia
-//
-// =====================================================
-
-async function findIDXSymbol(ticker) {
-
-    const cleanTicker =
+    const clean =
         normalizeTicker(ticker);
 
-    if (!cleanTicker) {
-
-        throw new Error(
-            "Ticker kosong"
-        );
+    if (!clean) {
+        throw new Error("Ticker kosong");
     }
 
-
-    // -----------------------------------------------
-    // CACHE
-    // -----------------------------------------------
-
-    const cached =
-        symbolCache.get(cleanTicker);
-
-    if (
-        cached &&
-        Date.now() - cached.time <
-            MARKET_SETTINGS.cacheDuration
-    ) {
-
-        return cached.symbol;
-    }
-
-
-    // -----------------------------------------------
-    // SYMBOL SEARCH
-    // -----------------------------------------------
-
-    const data =
-        await apiRequest(
-            "/symbol_search",
-            {
-                symbol: cleanTicker
-            }
-        );
-
-
-    const items =
-        Array.isArray(data?.data)
-            ? data.data
-            : Array.isArray(data)
-                ? data
-                : [];
-
-
-    // -----------------------------------------------
-    // FILTER INDONESIA
-    // -----------------------------------------------
-
-    const candidates =
-        items.filter(item => {
-
-            const symbol =
-                normalizeTicker(
-                    item?.symbol
-                );
-
-            const exchange =
-                String(
-                    item?.exchange || ""
-                ).toUpperCase();
-
-            const mic =
-                String(
-                    item?.mic_code || ""
-                ).toUpperCase();
-
-            const country =
-                String(
-                    item?.country || ""
-                ).toUpperCase();
-
-
-            const symbolMatch =
-                symbol === cleanTicker;
-
-
-            const exchangeMatch =
-                exchange.includes("INDONESIA") ||
-                exchange.includes("IDX") ||
-                exchange.includes("JAKARTA") ||
-                mic === MARKET_SETTINGS.micCode;
-
-
-            const countryMatch =
-                country === "INDONESIA" ||
-                country === "ID";
-
-
-            return (
-                symbolMatch &&
-                (
-                    exchangeMatch ||
-                    countryMatch
-                )
-            );
-        });
-
-
-    // -----------------------------------------------
-    // FALLBACK
-    // -----------------------------------------------
-
-    let selected =
-        candidates[0];
-
-
-    // Kalau search tidak memberikan hasil
-    // yang cukup spesifik, cari lagi dengan
-    // ticker + Indonesia.
-    if (!selected) {
-
-        const retry =
-            await apiRequest(
-                "/symbol_search",
-                {
-                    symbol:
-                        `${cleanTicker}:IDX`
-                }
-            );
-
-
-        const retryItems =
-            Array.isArray(retry?.data)
-                ? retry.data
-                : Array.isArray(retry)
-                    ? retry
-                    : [];
-
-
-        selected =
-            retryItems.find(item => {
-
-                const symbol =
-                    normalizeTicker(
-                        item?.symbol
-                    );
-
-                const mic =
-                    String(
-                        item?.mic_code || ""
-                    ).toUpperCase();
-
-                const exchange =
-                    String(
-                        item?.exchange || ""
-                    ).toUpperCase();
-
-                return (
-                    symbol === cleanTicker &&
-                    (
-                        mic ===
-                            MARKET_SETTINGS.micCode ||
-                        exchange.includes(
-                            "INDONESIA"
-                        ) ||
-                        exchange.includes(
-                            "IDX"
-                        )
-                    )
-                );
-            });
-    }
-
-
-    // -----------------------------------------------
-    // TIDAK DITEMUKAN
-    // -----------------------------------------------
-
-    if (!selected) {
-
-        throw new Error(
-            `${cleanTicker} tidak ditemukan sebagai saham Indonesia di Twelve Data`
-        );
-    }
-
-
-    // -----------------------------------------------
-    // SYMBOL FINAL
-    // -----------------------------------------------
-
-    const resolvedSymbol =
-        selected.symbol;
-
-
-    symbolCache.set(
-        cleanTicker,
-        {
-            symbol:
-                resolvedSymbol,
-            time:
-                Date.now()
-        }
-    );
-
-
-    return resolvedSymbol;
+    return `${clean}.JK`;
 }
 
 
 // =====================================================
-// VALIDATE BAR
+// NORMALIZE BAR
 // =====================================================
 
-function normalizeBar(row) {
+function normalizeBar(
+    timestamp,
+    quote,
+    index
+) {
 
-    const bar = {
+    const open =
+        Number(quote.open?.[index]);
 
-        datetime:
-            row?.datetime,
+    const high =
+        Number(quote.high?.[index]);
 
-        open:
-            Number(row?.open),
+    const low =
+        Number(quote.low?.[index]);
 
-        high:
-            Number(row?.high),
+    const close =
+        Number(quote.close?.[index]);
 
-        low:
-            Number(row?.low),
-
-        close:
-            Number(row?.close),
-
-        volume:
-            Number(row?.volume)
-
-    };
+    const volume =
+        Number(quote.volume?.[index]);
 
 
     if (
-        !Number.isFinite(bar.open) ||
-        !Number.isFinite(bar.high) ||
-        !Number.isFinite(bar.low) ||
-        !Number.isFinite(bar.close) ||
-        !Number.isFinite(bar.volume)
+        !Number.isFinite(open) ||
+        !Number.isFinite(high) ||
+        !Number.isFinite(low) ||
+        !Number.isFinite(close) ||
+        !Number.isFinite(volume)
     ) {
-
         return null;
     }
 
 
-    return bar;
+    const date =
+        new Date(
+            timestamp * 1000
+        );
+
+
+    return {
+
+        datetime:
+            date.toISOString(),
+
+        open,
+        high,
+        low,
+        close,
+        volume
+    };
 }
 
 
@@ -382,87 +124,199 @@ export async function getMarketData(ticker) {
     }
 
 
-    if (
-        !API_KEY ||
-        API_KEY.length < 10
-    ) {
-
-        throw new Error(
-            "API key Twelve Data belum valid"
-        );
-    }
-
-
-    // =================================================
-    // 1. RESOLVE SYMBOL IDX
-    // =================================================
-
-    const resolvedSymbol =
-        await findIDXSymbol(
+    const yahooSymbol =
+        toYahooSymbol(
             cleanTicker
         );
 
 
     // =================================================
-    // 2. REQUEST TIME SERIES
+    // URL
     // =================================================
 
-    const data =
-        await apiRequest(
-            "/time_series",
-            {
-                symbol:
-                    resolvedSymbol,
+    const params =
+        new URLSearchParams({
 
-                interval:
-                    MARKET_SETTINGS.interval,
+            interval:
+                MARKET_SETTINGS.interval,
 
-                outputsize:
-                    String(
-                        MARKET_SETTINGS.outputsize
-                    ),
+            range:
+                MARKET_SETTINGS.range,
 
-                order:
-                    "desc"
-            }
-        );
+            events:
+                "history",
+
+            includeAdjustedClose:
+                "true"
+
+        });
+
+
+    const url =
+        `${BASE_URL}/${encodeURIComponent(
+            yahooSymbol
+        )}?${params.toString()}`;
 
 
     // =================================================
-    // 3. VALIDASI
+    // REQUEST
     // =================================================
 
-    if (
-        !Array.isArray(data?.values) ||
-        data.values.length === 0
-    ) {
+    let response;
+
+    try {
+
+        response =
+            await fetch(url);
+
+    } catch (error) {
 
         throw new Error(
-            `${cleanTicker}: tidak ada historical data`
+            `${cleanTicker}: Yahoo Finance tidak dapat diakses dari browser. Kemungkinan CORS.`
         );
     }
 
 
     // =================================================
-    // 4. NORMALIZE OHLCV
+    // RESPONSE
     // =================================================
 
-    const bars =
-        data.values
-            .map(normalizeBar)
-            .filter(Boolean);
+    let data;
 
+    try {
+
+        data =
+            await response.json();
+
+    } catch {
+
+        throw new Error(
+            `${cleanTicker}: response Yahoo tidak valid`
+        );
+    }
+
+
+    if (!response.ok) {
+
+        throw new Error(
+            `${cleanTicker}: HTTP ${response.status}`
+        );
+    }
+
+
+    // =================================================
+    // YAHOO ERROR
+    // =================================================
+
+    const yahooError =
+        data?.chart?.error;
+
+
+    if (yahooError) {
+
+        throw new Error(
+            `${cleanTicker}: ${
+                yahooError.description ||
+                "Yahoo Finance error"
+            }`
+        );
+    }
+
+
+    // =================================================
+    // RESULT
+    // =================================================
+
+    const result =
+        data?.chart?.result?.[0];
+
+
+    if (!result) {
+
+        throw new Error(
+            `${cleanTicker}: data Yahoo tidak ditemukan`
+        );
+    }
+
+
+    const timestamps =
+        result.timestamp;
+
+
+    const quote =
+        result.indicators?.quote?.[0];
+
+
+    if (
+        !Array.isArray(timestamps) ||
+        !quote
+    ) {
+
+        throw new Error(
+            `${cleanTicker}: OHLCV Yahoo tidak tersedia`
+        );
+    }
+
+
+    // =================================================
+    // NORMALIZE OHLCV
+    // =================================================
+
+    const bars = [];
+
+
+    for (
+        let i = 0;
+        i < timestamps.length;
+        i++
+    ) {
+
+        const bar =
+            normalizeBar(
+                timestamps[i],
+                quote,
+                i
+            );
+
+
+        if (bar) {
+
+            bars.push(bar);
+        }
+    }
+
+
+    // =================================================
+    // SORT
+    // =================================================
+    //
+    // Engine kamu menggunakan:
+    //
+    // bars[0] = candle terbaru
+    //
+    // =================================================
+
+    bars.sort(
+        (a, b) =>
+            new Date(b.datetime) -
+            new Date(a.datetime)
+    );
+
+
+    // =================================================
+    // VALIDASI
+    // =================================================
 
     if (bars.length === 0) {
 
         throw new Error(
-            `${cleanTicker}: OHLCV tidak valid`
+            `${cleanTicker}: tidak ada candle OHLCV`
         );
     }
 
 
     // =================================================
-    // 5. LATEST
+    // CURRENT PRICE
     // =================================================
 
     const latest =
@@ -474,7 +328,7 @@ export async function getMarketData(ticker) {
 
 
     // =================================================
-    // 6. CHANGE %
+    // CHANGE %
     // =================================================
 
     let changePercent = 0;
@@ -497,7 +351,15 @@ export async function getMarketData(ticker) {
 
 
     // =================================================
-    // 7. RETURN
+    // META
+    // =================================================
+
+    const meta =
+        result.meta || {};
+
+
+    // =================================================
+    // RETURN
     // =================================================
 
     return {
@@ -505,7 +367,8 @@ export async function getMarketData(ticker) {
         ticker:
             cleanTicker,
 
-        resolvedSymbol,
+        resolvedSymbol:
+            yahooSymbol,
 
         price,
 
@@ -516,45 +379,30 @@ export async function getMarketData(ticker) {
         meta: {
 
             symbol:
-                data.meta?.symbol ||
-                resolvedSymbol,
+                yahooSymbol,
 
             exchange:
-                data.meta?.exchange ||
+                meta.exchangeName ||
                 "Indonesia Stock Exchange",
 
             micCode:
-                data.meta?.mic_code ||
-                MARKET_SETTINGS.micCode,
+                "XIDX",
 
             exchangeTimezone:
-                data.meta?.exchange_timezone ||
+                meta.exchangeTimezoneName ||
                 "Asia/Jakarta",
 
             currency:
-                data.meta?.currency ||
+                meta.currency ||
                 "IDR",
 
             interval:
-                data.meta?.interval ||
                 MARKET_SETTINGS.interval,
 
             type:
-                data.meta?.type ||
-                "Common Stock"
-
+                meta.instrumentType ||
+                "EQUITY"
         }
 
     };
-}
-
-
-// =====================================================
-// OPTIONAL:
-// CLEAR SYMBOL CACHE
-// =====================================================
-
-export function clearSymbolCache() {
-
-    symbolCache.clear();
 }
