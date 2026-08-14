@@ -1,11 +1,12 @@
 // =====================================================
 // MONEY STYLE SCANNER
 // api/market.js
-// YAHOO FINANCE - INDONESIA / IDX
+// ZAPI - IDX STOCK MARKET
 // =====================================================
 
-const BASE_URL =
-    "https://query1.finance.yahoo.com/v8/finance/chart";
+const API_KEY = "zpi_adggofa2ciw6f9uakw5nxifogu";
+
+const BASE_URL = "https://zpi.web.id/api/finance/idx";
 
 
 // =====================================================
@@ -13,9 +14,23 @@ const BASE_URL =
 // =====================================================
 
 const MARKET_SETTINGS = {
-    interval: "1d",
-    range: "1y"
+
+    // Endpoint IDX Zapi
+    endpoint: "/stock-summary",
+
+    // Jumlah data yang diminta
+    length: 1000,
+
+    // Cache 30 detik
+    cacheDuration: 30 * 1000
 };
+
+
+// =====================================================
+// CACHE
+// =====================================================
+
+const marketCache = new Map();
 
 
 // =====================================================
@@ -27,87 +42,278 @@ function normalizeTicker(ticker) {
     return String(ticker || "")
         .trim()
         .toUpperCase()
-        .replace(/\s+/g, "")
-        .replace(".JK", "");
+        .replace(/\s+/g, "");
+
 }
 
 
 // =====================================================
-// YAHOO SYMBOL
+// API REQUEST
 // =====================================================
 
-function toYahooSymbol(ticker) {
+async function apiRequest(params = {}) {
 
-    const clean =
-        normalizeTicker(ticker);
+    if (
+        !API_KEY ||
+        API_KEY === "MASUKKAN_API_KEY_ZAPI_DI_SINI"
+    ) {
 
-    if (!clean) {
-        throw new Error("Ticker kosong");
+        throw new Error(
+            "API key Zapi belum diisi."
+        );
+
     }
 
-    return `${clean}.JK`;
+
+    const searchParams =
+        new URLSearchParams({
+
+            ...params,
+
+            length:
+                String(
+                    params.length ??
+                    MARKET_SETTINGS.length
+                )
+
+        });
+
+
+    const url =
+        `${BASE_URL}${MARKET_SETTINGS.endpoint}?${searchParams.toString()}`;
+
+
+    const response =
+        await fetch(url, {
+
+            method: "GET",
+
+            headers: {
+
+                "Authorization":
+                    `Bearer ${API_KEY}`,
+
+                "Accept":
+                    "application/json"
+
+            }
+
+        });
+
+
+    let data = null;
+
+
+    try {
+
+        data =
+            await response.json();
+
+    } catch {
+
+        throw new Error(
+            `Response Zapi tidak valid. HTTP ${response.status}`
+        );
+
+    }
+
+
+    if (!response.ok) {
+
+        throw new Error(
+
+            data?.message ||
+
+            data?.error ||
+
+            `Zapi HTTP ${response.status}`
+
+        );
+
+    }
+
+
+    return data;
+
 }
 
 
 // =====================================================
-// NORMALIZE BAR
+// EXTRACT ARRAY
+// =====================================================
+//
+// Karena struktur response API bisa berubah,
+// kita coba beberapa bentuk umum.
+//
 // =====================================================
 
-function normalizeBar(
-    timestamp,
-    quote,
-    index
-) {
+function extractRows(data) {
 
-    const open =
-        Number(quote.open?.[index]);
+    if (Array.isArray(data)) {
 
-    const high =
-        Number(quote.high?.[index]);
+        return data;
 
-    const low =
-        Number(quote.low?.[index]);
-
-    const close =
-        Number(quote.close?.[index]);
-
-    const volume =
-        Number(quote.volume?.[index]);
+    }
 
 
     if (
-        !Number.isFinite(open) ||
-        !Number.isFinite(high) ||
-        !Number.isFinite(low) ||
-        !Number.isFinite(close) ||
-        !Number.isFinite(volume)
+        Array.isArray(data?.data)
     ) {
-        return null;
+
+        return data.data;
+
     }
 
 
-    const date =
-        new Date(
-            timestamp * 1000
-        );
+    if (
+        Array.isArray(data?.data?.data)
+    ) {
+
+        return data.data.data;
+
+    }
 
 
-    return {
+    if (
+        Array.isArray(data?.result)
+    ) {
 
-        datetime:
-            date.toISOString(),
+        return data.result;
 
-        open,
-        high,
-        low,
-        close,
-        volume
-    };
+    }
+
+
+    if (
+        Array.isArray(data?.results)
+    ) {
+
+        return data.results;
+
+    }
+
+
+    return [];
+
+}
+
+
+// =====================================================
+// FIND FIELD
+// =====================================================
+
+function findField(row, names) {
+
+    for (const name of names) {
+
+        if (
+            row &&
+            row[name] !== undefined &&
+            row[name] !== null
+        ) {
+
+            return row[name];
+
+        }
+
+    }
+
+
+    return null;
+
+}
+
+
+// =====================================================
+// NUMBER
+// =====================================================
+
+function toNumber(value) {
+
+    if (
+        value === null ||
+        value === undefined
+    ) {
+
+        return NaN;
+
+    }
+
+
+    if (
+        typeof value === "number"
+    ) {
+
+        return value;
+
+    }
+
+
+    const cleaned =
+        String(value)
+            .replace(/,/g, "")
+            .replace(/%/g, "")
+            .trim();
+
+
+    const number =
+        Number(cleaned);
+
+
+    return number;
+
+}
+
+
+// =====================================================
+// FIND STOCK
+// =====================================================
+
+function findStock(rows, ticker) {
+
+    const target =
+        normalizeTicker(ticker);
+
+
+    return rows.find(row => {
+
+        const code =
+            normalizeTicker(
+
+                findField(
+                    row,
+                    [
+                        "StockCode",
+                        "stockCode",
+                        "stock_code",
+                        "code",
+                        "Code",
+                        "symbol",
+                        "Symbol"
+                    ]
+                )
+
+            );
+
+
+        return code === target;
+
+    });
+
 }
 
 
 // =====================================================
 // GET MARKET DATA
+// =====================================================
+//
+// PERHATIAN:
+//
+// Endpoint stock-summary adalah data ringkasan,
+// bukan 150 candle historical.
+//
+// Fungsi ini mengembalikan data dalam bentuk
+// yang bisa digunakan app.js.
+//
 // =====================================================
 
 export async function getMarketData(ticker) {
@@ -119,290 +325,227 @@ export async function getMarketData(ticker) {
     if (!cleanTicker) {
 
         throw new Error(
-            "Ticker kosong"
+            "Ticker kosong."
         );
+
     }
 
 
-    const yahooSymbol =
-        toYahooSymbol(
-            cleanTicker
-        );
+    // =================================================
+    // CACHE
+    // =================================================
+
+    const cached =
+        marketCache.get(cleanTicker);
+
+
+    if (
+        cached &&
+        Date.now() - cached.time <
+            MARKET_SETTINGS.cacheDuration
+    ) {
+
+        return cached.data;
+
+    }
 
 
     // =================================================
-    // URL
+    // REQUEST DATA IDX
     // =================================================
 
-    const params =
-        new URLSearchParams({
+    const response =
+        await apiRequest({
 
-            interval:
-                MARKET_SETTINGS.interval,
-
-            range:
-                MARKET_SETTINGS.range,
-
-            events:
-                "history",
-
-            includeAdjustedClose:
-                "true"
+            code:
+                cleanTicker
 
         });
 
 
-    const url =
-        `${BASE_URL}/${encodeURIComponent(
-            yahooSymbol
-        )}?${params.toString()}`;
-
-
-    // =================================================
-    // REQUEST
-    // =================================================
-
-    let response;
-
-    try {
-
-        response =
-            await fetch(url);
-
-    } catch (error) {
-
-        throw new Error(
-            `${cleanTicker}: Yahoo Finance tidak dapat diakses dari browser. Kemungkinan CORS.`
-        );
-    }
-
-
-    // =================================================
-    // RESPONSE
-    // =================================================
-
-    let data;
-
-    try {
-
-        data =
-            await response.json();
-
-    } catch {
-
-        throw new Error(
-            `${cleanTicker}: response Yahoo tidak valid`
-        );
-    }
-
-
-    if (!response.ok) {
-
-        throw new Error(
-            `${cleanTicker}: HTTP ${response.status}`
-        );
-    }
-
-
-    // =================================================
-    // YAHOO ERROR
-    // =================================================
-
-    const yahooError =
-        data?.chart?.error;
-
-
-    if (yahooError) {
-
-        throw new Error(
-            `${cleanTicker}: ${
-                yahooError.description ||
-                "Yahoo Finance error"
-            }`
-        );
-    }
-
-
-    // =================================================
-    // RESULT
-    // =================================================
-
-    const result =
-        data?.chart?.result?.[0];
-
-
-    if (!result) {
-
-        throw new Error(
-            `${cleanTicker}: data Yahoo tidak ditemukan`
-        );
-    }
-
-
-    const timestamps =
-        result.timestamp;
-
-
-    const quote =
-        result.indicators?.quote?.[0];
+    const rows =
+        extractRows(response);
 
 
     if (
-        !Array.isArray(timestamps) ||
-        !quote
+        !Array.isArray(rows) ||
+        rows.length === 0
     ) {
 
         throw new Error(
-            `${cleanTicker}: OHLCV Yahoo tidak tersedia`
+
+            `${cleanTicker}: data IDX tidak ditemukan.`
+
         );
+
     }
 
 
     // =================================================
-    // NORMALIZE OHLCV
+    // CARI TICKER
     // =================================================
 
-    const bars = [];
+    const stock =
+        findStock(
+            rows,
+            cleanTicker
+        );
 
 
-    for (
-        let i = 0;
-        i < timestamps.length;
-        i++
-    ) {
-
-        const bar =
-            normalizeBar(
-                timestamps[i],
-                quote,
-                i
-            );
-
-
-        if (bar) {
-
-            bars.push(bar);
-        }
-    }
-
-
-    // =================================================
-    // SORT
-    // =================================================
-    //
-    // Engine kamu menggunakan:
-    //
-    // bars[0] = candle terbaru
-    //
-    // =================================================
-
-    bars.sort(
-        (a, b) =>
-            new Date(b.datetime) -
-            new Date(a.datetime)
-    );
-
-
-    // =================================================
-    // VALIDASI
-    // =================================================
-
-    if (bars.length === 0) {
+    if (!stock) {
 
         throw new Error(
-            `${cleanTicker}: tidak ada candle OHLCV`
+
+            `${cleanTicker}: saham tidak ditemukan di data IDX Zapi.`
+
         );
+
     }
 
 
     // =================================================
-    // CURRENT PRICE
+    // FIELD MARKET
     // =================================================
-
-    const latest =
-        bars[0];
-
 
     const price =
-        latest.close;
+        toNumber(
+
+            findField(
+                stock,
+                [
+                    "Close",
+                    "close",
+                    "Last",
+                    "last",
+                    "Price",
+                    "price",
+                    "LastPrice",
+                    "lastPrice"
+                ]
+            )
+
+        );
+
+
+    const changePercent =
+        toNumber(
+
+            findField(
+                stock,
+                [
+                    "ChangePercent",
+                    "changePercent",
+                    "ChangePct",
+                    "changePct",
+                    "PercentChange",
+                    "percentChange"
+                ]
+            )
+
+        );
 
 
     // =================================================
-    // CHANGE %
+    // VALIDASI PRICE
     // =================================================
-
-    let changePercent = 0;
-
 
     if (
-        bars.length >= 2 &&
-        bars[1].close > 0
+        !Number.isFinite(price)
     ) {
 
-        changePercent =
-            (
-                (
-                    latest.close -
-                    bars[1].close
-                ) /
-                bars[1].close
-            ) * 100;
+        throw new Error(
+
+            `${cleanTicker}: harga saham tidak tersedia dari response Zapi.`
+
+        );
+
     }
-
-
-    // =================================================
-    // META
-    // =================================================
-
-    const meta =
-        result.meta || {};
 
 
     // =================================================
     // RETURN
     // =================================================
 
-    return {
+    const result = {
 
         ticker:
             cleanTicker,
 
-        resolvedSymbol:
-            yahooSymbol,
-
         price,
 
-        changePercent,
+        changePercent:
+            Number.isFinite(changePercent)
+                ? changePercent
+                : 0,
 
-        bars,
+        // ---------------------------------------------
+        // BELUM ADA HISTORICAL CANDLE
+        // ---------------------------------------------
+        //
+        // Jangan isi dummy.
+        //
+        // Karena engine profile membutuhkan
+        // OHLCV historical.
+        //
+        bars: [],
 
         meta: {
 
             symbol:
-                yahooSymbol,
+                cleanTicker,
 
             exchange:
-                meta.exchangeName ||
                 "Indonesia Stock Exchange",
 
-            micCode:
-                "XIDX",
-
-            exchangeTimezone:
-                meta.exchangeTimezoneName ||
-                "Asia/Jakarta",
-
             currency:
-                meta.currency ||
                 "IDR",
 
-            interval:
-                MARKET_SETTINGS.interval,
+            source:
+                "Zapi IDX",
 
-            type:
-                meta.instrumentType ||
-                "EQUITY"
-        }
+            live:
+                true
+
+        },
+
+        raw:
+            stock
 
     };
+
+
+    // =================================================
+    // CACHE
+    // =================================================
+
+    marketCache.set(
+
+        cleanTicker,
+
+        {
+
+            time:
+                Date.now(),
+
+            data:
+                result
+
+        }
+
+    );
+
+
+    return result;
+
+}
+
+
+// =====================================================
+// CLEAR CACHE
+// =====================================================
+
+export function clearMarketCache() {
+
+    marketCache.clear();
+
 }
