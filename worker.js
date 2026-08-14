@@ -4,7 +4,7 @@
 // =====================================================
 
 const ZAPI_URL =
-  "https://api.zpi.web.id/v1/finance:idx/raw";
+  "https://zpi.web.id/api/finance/idx/raw";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
