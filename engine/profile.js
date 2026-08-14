@@ -15,9 +15,9 @@ export function calculateProfile(bars, settings = {}) {
     } = settings;
 
 
-    // =================================================
+    // =====================================================
     // VALIDASI
-    // =================================================
+    // =====================================================
 
     if (!Array.isArray(bars) || bars.length === 0) {
         throw new Error("Profile: data candle kosong");
@@ -28,11 +28,11 @@ export function calculateProfile(bars, settings = {}) {
     }
 
 
-    // =================================================
-    // AMBIL DATA
-    // =================================================
-
+    // =====================================================
+    // DATA TERBARU
     // bars[0] = candle terbaru
+    // =====================================================
+
     const profileBars = bars.slice(
         0,
         Math.min(lookback, bars.length)
@@ -44,14 +44,9 @@ export function calculateProfile(bars, settings = {}) {
     );
 
 
-    if (profileBars.length === 0) {
-        throw new Error("Profile: tidak ada candle");
-    }
-
-
-    // =================================================
+    // =====================================================
     // PROFILE HIGH / LOW
-    // =================================================
+    // =====================================================
 
     let profileHigh = -Infinity;
     let profileLow = Infinity;
@@ -68,15 +63,8 @@ export function calculateProfile(bars, settings = {}) {
             continue;
         }
 
-        profileHigh = Math.max(
-            profileHigh,
-            high
-        );
-
-        profileLow = Math.min(
-            profileLow,
-            low
-        );
+        profileHigh = Math.max(profileHigh, high);
+        profileLow = Math.min(profileLow, low);
     }
 
 
@@ -89,10 +77,6 @@ export function calculateProfile(bars, settings = {}) {
         );
     }
 
-
-    // =================================================
-    // PRICE RANGE
-    // =================================================
 
     const priceRange =
         profileHigh - profileLow;
@@ -109,45 +93,22 @@ export function calculateProfile(bars, settings = {}) {
         priceRange / bins;
 
 
-    if (
-        !Number.isFinite(binSize) ||
-        binSize <= 0
-    ) {
-        throw new Error(
-            "Profile: bin size tidak valid"
-        );
-    }
-
-
-    // =================================================
+    // =====================================================
     // VOLUME BINS
-    // =================================================
+    // =====================================================
 
     const volumeBins =
         new Array(bins).fill(0);
 
 
-    // =================================================
-    // MASUKKAN VOLUME POC
     // =====================================================
-    //
-    // HANYA pocLookback candle terbaru.
-    //
-    // Ini sama dengan Pine:
-    //
-    // pocLookback = 50
-    //
-    // Jadi POC tidak memakai seluruh 150 candle.
-    // =================================================
+    // POC AKTIF
+    // =====================================================
 
     for (const bar of pocBars) {
 
-        const price =
-            Number(bar.close);
-
-        const volume =
-            Number(bar.volume);
-
+        const price = Number(bar.close);
+        const volume = Number(bar.volume);
 
         if (
             !Number.isFinite(price) ||
@@ -157,13 +118,11 @@ export function calculateProfile(bars, settings = {}) {
             continue;
         }
 
-
         const rawIndex =
             Math.floor(
                 (price - profileLow) /
                 binSize
             );
-
 
         const index =
             Math.max(
@@ -174,41 +133,35 @@ export function calculateProfile(bars, settings = {}) {
                 )
             );
 
-
         volumeBins[index] += volume;
     }
 
 
-    // =================================================
+    // =====================================================
     // CARI POC
-    // =================================================
+    // =====================================================
 
     let pocIndex = 0;
     let pocVolume = 0;
 
-    for (
-        let i = 0;
-        i < bins;
-        i++
-    ) {
+    for (let i = 0; i < bins; i++) {
 
-        const volume =
-            volumeBins[i];
-
-        if (volume > pocVolume) {
+        if (
+            volumeBins[i] >
+            pocVolume
+        ) {
 
             pocVolume =
-                volume;
+                volumeBins[i];
 
-            pocIndex =
-                i;
+            pocIndex = i;
         }
     }
 
 
-    // =================================================
+    // =====================================================
     // TOTAL VOLUME
-    // =================================================
+    // =====================================================
 
     const totalVolume =
         volumeBins.reduce(
@@ -218,29 +171,21 @@ export function calculateProfile(bars, settings = {}) {
         );
 
 
-    // =================================================
+    // =====================================================
     // VALUE AREA
-    // =================================================
+    // =====================================================
 
     const targetVolume =
         totalVolume *
-        valueAreaPercent /
-        100;
+        (valueAreaPercent / 100);
 
 
-    let valueLowIndex =
-        pocIndex;
-
-    let valueHighIndex =
-        pocIndex;
+    let valueLowIndex = pocIndex;
+    let valueHighIndex = pocIndex;
 
     let accumulatedVolume =
         volumeBins[pocIndex];
 
-
-    // =================================================
-    // EXPAND VALUE AREA
-    // =================================================
 
     for (
         let step = 0;
@@ -255,14 +200,12 @@ export function calculateProfile(bars, settings = {}) {
             break;
         }
 
-
         const canGoLow =
             valueLowIndex > 0;
 
         const canGoHigh =
             valueHighIndex <
             bins - 1;
-
 
         const lowerVolume =
             canGoLow
@@ -271,7 +214,6 @@ export function calculateProfile(bars, settings = {}) {
                 ]
                 : -1;
 
-
         const upperVolume =
             canGoHigh
                 ? volumeBins[
@@ -279,10 +221,6 @@ export function calculateProfile(bars, settings = {}) {
                 ]
                 : -1;
 
-
-        // ---------------------------------------------
-        // PILIH SISI DENGAN VOLUME LEBIH BESAR
-        // ---------------------------------------------
 
         if (
             upperVolume >=
@@ -314,89 +252,67 @@ export function calculateProfile(bars, settings = {}) {
     }
 
 
-    // =================================================
-    // PRICE LEVEL
-    // =================================================
+    // =====================================================
+    // HARGA POC
+    // =====================================================
 
     const pocLow =
         profileLow +
-        pocIndex *
-        binSize;
-
+        pocIndex * binSize;
 
     const pocHigh =
-        pocLow +
-        binSize;
+        pocLow + binSize;
 
-
-    // POC = tengah bin
     const pocPrice =
-        (
-            pocLow +
-            pocHigh
-        ) / 2;
+        (pocLow + pocHigh) / 2;
 
 
-    // =================================================
+    // =====================================================
     // VAH / VAL
-    // =================================================
-    //
-    // INI HARGA ASLI.
-    //
+    // =====================================================
+    // PENTING:
+    // Nilai ini adalah HARGA.
     // BUKAN PERSENTASE.
-    // =================================================
+    // =====================================================
 
     const valueAreaLow =
         profileLow +
-        valueLowIndex *
-        binSize;
-
+        valueLowIndex * binSize;
 
     const valueAreaHigh =
         profileLow +
-        (
-            valueHighIndex + 1
-        ) *
-        binSize;
+        (valueHighIndex + 1) * binSize;
 
 
-    // =================================================
+    // =====================================================
     // RED ZONE
-    // =================================================
+    // =====================================================
 
     const redLowIndex =
         Math.max(
             0,
-            pocIndex -
-            redZoneBins
+            pocIndex - redZoneBins
         );
-
 
     const redHighIndex =
         Math.min(
             bins - 1,
-            pocIndex +
-            redZoneBins
+            pocIndex + redZoneBins
         );
 
 
     const redZoneLow =
         profileLow +
-        redLowIndex *
-        binSize;
-
+        redLowIndex * binSize;
 
     const redZoneHigh =
         profileLow +
-        (
-            redHighIndex + 1
-        ) *
-        binSize;
+        (redHighIndex + 1) * binSize;
 
 
-    // =================================================
+    // =====================================================
     // INVALID BUY
-    // =================================================
+    // =====================================================
 
     const invalidBuyLowIndex =
         Math.max(
@@ -405,16 +321,14 @@ export function calculateProfile(bars, settings = {}) {
             maxDistanceBins
         );
 
-
     const invalidBuyLow =
         profileLow +
-        invalidBuyLowIndex *
-        binSize;
+        invalidBuyLowIndex * binSize;
 
 
-    // =================================================
+    // =====================================================
     // PROFILE STRENGTH
-    // =================================================
+    // =====================================================
 
     const maxProfileVolume =
         Math.max(
@@ -422,23 +336,14 @@ export function calculateProfile(bars, settings = {}) {
         );
 
 
-    // =================================================
-    // POC POSITION
-    // =================================================
-
     const pocPosition =
-        (
-            (
-                pocPrice -
-                profileLow
-            ) /
-            priceRange
-        ) * 100;
+        priceRange > 0
+            ? (
+                (pocPrice - profileLow) /
+                priceRange
+            ) * 100
+            : 50;
 
-
-    // =================================================
-    // PROFILE STRENGTH %
-    // =================================================
 
     const profileStrength =
         maxProfileVolume > 0
@@ -449,76 +354,49 @@ export function calculateProfile(bars, settings = {}) {
             : 0;
 
 
-    // =================================================
+    // =====================================================
     // RETURN
-    // =================================================
+    // =====================================================
 
     return {
 
-        // ---------------------------------------------
         // RANGE
-        // ---------------------------------------------
-
         profileHigh,
         profileLow,
         priceRange,
         binSize,
 
-
-        // ---------------------------------------------
-        // POC
-        // ---------------------------------------------
-
+        // POC = HARGA
         pocIndex,
         pocVolume,
         pocPrice,
 
-
-        // ---------------------------------------------
-        // VALUE AREA
-        // ---------------------------------------------
-
+        // VALUE AREA = HARGA
         valueLowIndex,
         valueHighIndex,
 
-        // HARGA ASLI
         valueAreaLow,
         valueAreaHigh,
 
-
-        // ---------------------------------------------
-        // RED ZONE
-        // ---------------------------------------------
-
+        // RED ZONE = HARGA
         redLowIndex,
         redHighIndex,
 
         redZoneLow,
         redZoneHigh,
 
-
-        // ---------------------------------------------
-        // INVALID BUY
-        // ---------------------------------------------
-
+        // INVALID BUY = HARGA
         invalidBuyLow,
 
-
-        // ---------------------------------------------
         // PROFILE
-        // ---------------------------------------------
-
         volumeBins,
         maxProfileVolume,
 
+        // POSITION / STRENGTH = PERSENTASE INTERNAL
         pocPosition,
         profileStrength,
 
-
-        // ---------------------------------------------
         // SETTINGS
-        // ---------------------------------------------
-
         lookback,
         pocLookback,
         bins,
