@@ -5,65 +5,254 @@
 
 export function calculateVolume(candles, settings = {}) {
 
-    const {
-        volumePeriod = 20,
-        volumeSpikeMult = 2.0
-    } = settings;
+    // =================================================
+    // SETTINGS
+    // =================================================
 
-    if (!Array.isArray(candles) || candles.length === 0) {
+    const volumePeriod =
+        Number(settings.volumePeriod ?? 20);
+
+    const volumeSpikeMult =
+        Number(settings.volumeSpikeMult ?? 2.0);
+
+
+    // =================================================
+    // VALIDASI SETTINGS
+    // =================================================
+
+    if (
+        !Number.isFinite(volumePeriod) ||
+        volumePeriod < 1
+    ) {
         return null;
     }
 
-    if (candles.length < volumePeriod) {
+    if (
+        !Number.isFinite(volumeSpikeMult) ||
+        volumeSpikeMult <= 0
+    ) {
         return null;
     }
+
+
+    // =================================================
+    // VALIDASI DATA
+    // =================================================
+
+    if (
+        !Array.isArray(candles) ||
+        candles.length === 0
+    ) {
+        return null;
+    }
+
+
+    // =================================================
+    // NORMALISASI CANDLE
+    // =================================================
+    //
+    // Zapi:
+    // terbaru -> terlama
+    //
+    // Engine:
+    // terlama -> terbaru
+    // =================================================
+
+    const normalizedCandles =
+        candles
+            .map((candle) => {
+
+                if (!candle) {
+                    return null;
+                }
+
+                const date =
+                    candle.date ?? null;
+
+                const open =
+                    Number(candle.open);
+
+                const high =
+                    Number(candle.high);
+
+                const low =
+                    Number(candle.low);
+
+                const close =
+                    Number(candle.close);
+
+                const volume =
+                    Number(candle.volume);
+
+
+                if (
+                    !Number.isFinite(open) ||
+                    !Number.isFinite(high) ||
+                    !Number.isFinite(low) ||
+                    !Number.isFinite(close) ||
+                    !Number.isFinite(volume)
+                ) {
+                    return null;
+                }
+
+
+                if (volume < 0) {
+                    return null;
+                }
+
+
+                if (high < low) {
+                    return null;
+                }
+
+
+                return {
+                    ...candle,
+
+                    date,
+
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume
+                };
+            })
+            .filter(Boolean);
+
+
+    if (
+        normalizedCandles.length === 0
+    ) {
+        return null;
+    }
+
+
+    // =================================================
+    // URUTKAN CANDLE
+    // =================================================
+    //
+    // Terlama -> terbaru
+    //
+    // Supaya:
+    //
+    // candles[candles.length - 1]
+    //
+    // selalu candle terbaru.
+    // =================================================
+
+    const hasDates =
+        normalizedCandles.every(
+            candle => Boolean(candle.date)
+        );
+
+
+    if (hasDates) {
+
+        normalizedCandles.sort(
+            (a, b) => {
+
+                const timeA =
+                    new Date(a.date).getTime();
+
+                const timeB =
+                    new Date(b.date).getTime();
+
+
+                if (
+                    !Number.isFinite(timeA) ||
+                    !Number.isFinite(timeB)
+                ) {
+                    return 0;
+                }
+
+
+                return timeA - timeB;
+            }
+        );
+    }
+
+
+    // =================================================
+    // VALIDASI JUMLAH CANDLE
+    // =================================================
+
+    if (
+        normalizedCandles.length <
+        volumePeriod
+    ) {
+        return null;
+    }
+
 
     // =================================================
     // CANDLE TERBARU
     // =================================================
 
-    const current = candles[candles.length - 1];
+    const current =
+        normalizedCandles[
+            normalizedCandles.length - 1
+        ];
 
-    const open = Number(current.open);
-    const high = Number(current.high);
-    const low = Number(current.low);
-    const close = Number(current.close);
-    const volume = Number(current.volume);
+
+    const open =
+        current.open;
+
+    const high =
+        current.high;
+
+    const low =
+        current.low;
+
+    const close =
+        current.close;
+
+    const volume =
+        current.volume;
+
+
+    // =================================================
+    // VOLUME WINDOW
+    // =================================================
+
+    const volumeWindow =
+        normalizedCandles.slice(
+            -Math.floor(volumePeriod)
+        );
+
+
+    const validVolumes =
+        volumeWindow
+            .map(
+                candle =>
+                    Number(candle.volume)
+            )
+            .filter(
+                value =>
+                    Number.isFinite(value) &&
+                    value >= 0
+            );
+
 
     if (
-        !Number.isFinite(open) ||
-        !Number.isFinite(high) ||
-        !Number.isFinite(low) ||
-        !Number.isFinite(close) ||
-        !Number.isFinite(volume)
+        validVolumes.length === 0
     ) {
         return null;
     }
+
 
     // =================================================
     // VOLUME RATA-RATA
     // =================================================
 
-    const volumeWindow =
-        candles.slice(-volumePeriod);
-
-    const validVolumes =
-        volumeWindow
-            .map(c => Number(c.volume))
-            .filter(v =>
-                Number.isFinite(v) &&
-                v >= 0
-            );
-
-    if (validVolumes.length === 0) {
-        return null;
-    }
-
     const averageVolume =
         validVolumes.reduce(
-            (sum, v) => sum + v,
+            (sum, value) =>
+                sum + value,
             0
-        ) / validVolumes.length;
+        ) /
+        validVolumes.length;
+
 
     // =================================================
     // VOLUME RATIO
@@ -71,11 +260,19 @@ export function calculateVolume(candles, settings = {}) {
 
     const volumeRatio =
         averageVolume > 0
-            ? volume / averageVolume
+            ? volume /
+              averageVolume
             : 0;
 
+
+    // =================================================
+    // VOLUME SPIKE
+    // =================================================
+
     const volumeSpike =
-        volumeRatio >= volumeSpikeMult;
+        volumeRatio >=
+        volumeSpikeMult;
+
 
     // =================================================
     // CANDLE DIRECTION
@@ -84,76 +281,109 @@ export function calculateVolume(candles, settings = {}) {
     const bullishCandle =
         close > open;
 
+
     const bearishCandle =
         close < open;
+
 
     const neutralCandle =
         close === open;
 
+
     // =================================================
-    // BODY
+    // CANDLE RANGE
     // =================================================
 
     const candleRange =
         high - low;
 
+
     const candleBody =
-        Math.abs(close - open);
+        Math.abs(
+            close - open
+        );
+
+
+    // =================================================
+    // BODY RATIO
+    // =================================================
 
     const bodyRatio =
         candleRange > 0
-            ? candleBody / candleRange
+            ? candleBody /
+              candleRange
             : 0;
+
 
     // =================================================
     // CLOSE POSITION
     // =================================================
+    //
     // 0 = dekat LOW
     // 1 = dekat HIGH
     // =================================================
 
     const closePosition =
         candleRange > 0
-            ? (close - low) / candleRange
+            ? (
+                close - low
+            ) /
+            candleRange
             : 0.5;
+
 
     // =================================================
     // BUY / SELL PRESSURE
     // =================================================
 
-    let pressure = "NORMAL";
+    let pressure =
+        "NORMAL";
 
-    if (volumeSpike && bearishCandle) {
-        pressure = "SELL";
-    } else if (volumeSpike && bullishCandle) {
-        pressure = "BUY";
+
+    if (
+        volumeSpike &&
+        bearishCandle
+    ) {
+
+        pressure =
+            "SELL";
+
+    } else if (
+        volumeSpike &&
+        bullishCandle
+    ) {
+
+        pressure =
+            "BUY";
     }
 
+
     // =================================================
-    // DUMP
+    // DUMP PRESSURE
     // =================================================
+    //
     // Volume besar + candle bearish.
     //
-    // Belum disebut manipulasi.
-    // Ini hanya indikasi tekanan jual.
+    // Ini hanya tekanan jual,
+    // bukan otomatis manipulasi.
     // =================================================
 
     const dumpPressure =
         volumeSpike &&
         bearishCandle;
 
+
     // =================================================
     // ABSORPTION
     // =================================================
-    // Volume tinggi tetapi candle body relatif kecil.
     //
-    // Ini bisa menjadi indikasi adanya transaksi besar
-    // yang tidak langsung menghasilkan pergerakan harga.
+    // Volume tinggi tetapi body kecil.
     // =================================================
 
     const absorption =
         volumeSpike &&
         bodyRatio <= 0.35;
+
 
     // =================================================
     // HASIL
@@ -161,37 +391,83 @@ export function calculateVolume(candles, settings = {}) {
 
     return {
 
-        // Harga
+        // ---------------------------------------------
+        // DATA CANDLE TERBARU
+        // ---------------------------------------------
+
+        date:
+            current.date ?? null,
+
         open,
         high,
         low,
         close,
 
-        // Volume
+
+        // ---------------------------------------------
+        // VOLUME
+        // ---------------------------------------------
+
         volume,
+
         averageVolume,
+
         volumeRatio,
+
         volumeSpike,
 
-        // Candle
+
+        // ---------------------------------------------
+        // CANDLE
+        // ---------------------------------------------
+
         bullishCandle,
+
         bearishCandle,
+
         neutralCandle,
 
-        // Struktur candle
+
+        // ---------------------------------------------
+        // STRUKTUR CANDLE
+        // ---------------------------------------------
+
         candleRange,
+
         candleBody,
+
         bodyRatio,
+
         closePosition,
 
-        // Pressure
+
+        // ---------------------------------------------
+        // PRESSURE
+        // ---------------------------------------------
+
         pressure,
 
-        // Signal tambahan
+
+        // ---------------------------------------------
+        // SIGNAL TAMBAHAN
+        // ---------------------------------------------
+
         dumpPressure,
+
         absorption,
 
-        period: volumePeriod,
-        spikeMultiplier: volumeSpikeMult
+
+        // ---------------------------------------------
+        // META
+        // ---------------------------------------------
+
+        candleCount:
+            normalizedCandles.length,
+
+        period:
+            volumePeriod,
+
+        spikeMultiplier:
+            volumeSpikeMult
     };
 }
