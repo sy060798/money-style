@@ -1,22 +1,55 @@
 // =====================================================
 // MONEY STYLE SCANNER
 // api/market.js
-// ZAPI IDX RAW PASSTHROUGH
+// ZAPI IDX VIA PROXY
 // =====================================================
 
-const API_KEY = "zpi_adggofa2ciw6f9uakw5nxifogu";
 
-const BASE_URL =
-    "https://zpi.web.id/api/finance/idx/raw";
+// =====================================================
+// PROXY URL
+// =====================================================
+//
+// NANTI ISI DENGAN URL BACKEND / CLOUDFLARE WORKER
+//
+// Contoh:
+// https://money-style-api.namauser.workers.dev
+//
+// JANGAN lagi masukkan API KEY ZAPI di sini.
+// =====================================================
+
+const PROXY_URL =
+    "https://zpi.web.id";
+
+
+// =====================================================
+// SETTINGS
+// =====================================================
 
 const SETTINGS = {
-    path: "TradingSummary/GetStockSummary",
-    length: 1000,
-    start: 0,
-    cacheDuration: 30 * 1000
+
+    // Endpoint yang dipanggil oleh proxy
+    path:
+        "TradingSummary/GetStockSummary",
+
+    // Jumlah data
+    length:
+        1000,
+
+    start:
+        0,
+
+    // Cache browser
+    cacheDuration:
+        30 * 1000
 };
 
-const cache = new Map();
+
+// =====================================================
+// CACHE
+// =====================================================
+
+const cache =
+    new Map();
 
 
 // =====================================================
@@ -24,10 +57,12 @@ const cache = new Map();
 // =====================================================
 
 function normalizeTicker(ticker) {
+
     return String(ticker || "")
         .trim()
         .toUpperCase()
         .replace(/\s+/g, "");
+
 }
 
 
@@ -45,66 +80,24 @@ function toNumber(value) {
         return NaN;
     }
 
-    if (typeof value === "number") {
+
+    if (
+        typeof value === "number"
+    ) {
         return value;
     }
 
-    const text = String(value)
-        .replace(/,/g, "")
-        .replace(/%/g, "")
-        .trim();
+
+    const text =
+        String(value)
+            .replace(/\./g, "")
+            .replace(/,/g, ".")
+            .replace(/%/g, "")
+            .trim();
+
 
     return Number(text);
-}
 
-
-// =====================================================
-// REQUEST ZAPI
-// =====================================================
-
-async function apiRequest(ticker) {
-
-    const query =
-        `length=${SETTINGS.length}` +
-        `&start=${SETTINGS.start}` +
-        `&kodeEmiten=${encodeURIComponent(ticker)}`;
-
-    const params = new URLSearchParams({
-        path: SETTINGS.path,
-        query
-    });
-
-    const url =
-        `${BASE_URL}?${params.toString()}`;
-
-    const response = await fetch(url, {
-        method: "GET",
-        headers: {
-            "Accept": "application/json",
-            "Authorization": `Bearer ${API_KEY}`
-        }
-    });
-
-    let data;
-
-    try {
-        data = await response.json();
-    } catch {
-        throw new Error(
-            `Response Zapi bukan JSON. HTTP ${response.status}`
-        );
-    }
-
-    if (!response.ok) {
-
-        throw new Error(
-            data?.message ||
-            data?.error ||
-            `Zapi HTTP ${response.status}`
-        );
-    }
-
-    return data;
 }
 
 
@@ -114,27 +107,43 @@ async function apiRequest(ticker) {
 
 function extractRows(data) {
 
-    if (Array.isArray(data)) {
+    if (
+        Array.isArray(data)
+    ) {
         return data;
     }
 
-    if (Array.isArray(data?.data)) {
+
+    if (
+        Array.isArray(data?.data)
+    ) {
         return data.data;
     }
 
-    if (Array.isArray(data?.data?.data)) {
+
+    if (
+        Array.isArray(data?.data?.data)
+    ) {
         return data.data.data;
     }
 
-    if (Array.isArray(data?.result)) {
+
+    if (
+        Array.isArray(data?.result)
+    ) {
         return data.result;
     }
 
-    if (Array.isArray(data?.results)) {
+
+    if (
+        Array.isArray(data?.results)
+    ) {
         return data.results;
     }
 
+
     return [];
+
 }
 
 
@@ -144,18 +153,137 @@ function extractRows(data) {
 
 function findField(row, names) {
 
-    for (const name of names) {
+    if (!row) {
+        return null;
+    }
+
+
+    for (
+        const name of names
+    ) {
 
         if (
-            row &&
             row[name] !== undefined &&
             row[name] !== null
         ) {
+
             return row[name];
+
         }
+
     }
 
+
     return null;
+
+}
+
+
+// =====================================================
+// PROXY REQUEST
+// =====================================================
+
+async function apiRequest(ticker) {
+
+    if (
+        !PROXY_URL ||
+        PROXY_URL.includes(
+            "GANTI-DENGAN"
+        )
+    ) {
+
+        throw new Error(
+            "PROXY_URL belum diisi. Buat proxy Cloudflare Worker terlebih dahulu."
+        );
+
+    }
+
+
+    const params =
+        new URLSearchParams({
+
+            code:
+                ticker,
+
+            path:
+                SETTINGS.path,
+
+            length:
+                String(
+                    SETTINGS.length
+                ),
+
+            start:
+                String(
+                    SETTINGS.start
+                )
+
+        });
+
+
+    const url =
+        `${PROXY_URL}/stock?${params.toString()}`;
+
+
+    const response =
+        await fetch(
+            url,
+            {
+                method: "GET",
+
+                headers: {
+                    "Accept":
+                        "application/json"
+                }
+            }
+        );
+
+
+    let data;
+
+
+    try {
+
+        data =
+            await response.json();
+
+    } catch {
+
+        throw new Error(
+            `Proxy tidak mengembalikan JSON. HTTP ${response.status}`
+        );
+
+    }
+
+
+    if (
+        !response.ok
+    ) {
+
+        throw new Error(
+
+            data?.message ||
+            data?.error ||
+            `Proxy HTTP ${response.status}`
+
+        );
+
+    }
+
+
+    if (
+        data?.error
+    ) {
+
+        throw new Error(
+            data.error
+        );
+
+    }
+
+
+    return data;
+
 }
 
 
@@ -168,8 +296,13 @@ export async function getMarketData(ticker) {
     const cleanTicker =
         normalizeTicker(ticker);
 
+
     if (!cleanTicker) {
-        throw new Error("Ticker kosong");
+
+        throw new Error(
+            "Ticker kosong"
+        );
+
     }
 
 
@@ -178,15 +311,20 @@ export async function getMarketData(ticker) {
     // =================================================
 
     const cached =
-        cache.get(cleanTicker);
+        cache.get(
+            cleanTicker
+        );
+
 
     if (
         cached &&
-        Date.now() - cached.time <
+        Date.now() -
+            cached.time <
             SETTINGS.cacheDuration
     ) {
 
         return cached.data;
+
     }
 
 
@@ -195,60 +333,76 @@ export async function getMarketData(ticker) {
     // =================================================
 
     const response =
-        await apiRequest(cleanTicker);
+        await apiRequest(
+            cleanTicker
+        );
 
 
     console.log(
-        `[ZAPI] ${cleanTicker}:`,
+        `[ZAPI PROXY] ${cleanTicker}:`,
         response
     );
 
 
     // =================================================
-    // ROWS
+    // EXTRACT DATA
     // =================================================
 
     const rows =
-        extractRows(response);
+        extractRows(
+            response
+        );
 
 
-    if (rows.length === 0) {
+    if (
+        rows.length === 0
+    ) {
 
         throw new Error(
-            `${cleanTicker}: response Zapi tidak memiliki data`
+
+            `${cleanTicker}: data IDX tidak ditemukan dari proxy.`
+
         );
+
     }
 
 
     // =================================================
-    // CARI DATA TICKER
+    // CARI STOCK
     // =================================================
 
     const stock =
-        rows.find(row => {
+        rows.find(
+            row => {
 
-            const code =
-                normalizeTicker(
-                    findField(
-                        row,
-                        [
-                            "kodeEmiten",
-                            "KodeEmiten",
-                            "stockCode",
-                            "StockCode",
-                            "code",
-                            "Code",
-                            "symbol",
-                            "Symbol"
-                        ]
-                    )
+                const code =
+                    normalizeTicker(
+
+                        findField(
+                            row,
+                            [
+                                "kodeEmiten",
+                                "KodeEmiten",
+                                "stockCode",
+                                "StockCode",
+                                "code",
+                                "Code",
+                                "symbol",
+                                "Symbol"
+                            ]
+                        )
+
+                    );
+
+
+                return (
+                    code ===
+                    cleanTicker
                 );
 
-            return (
-                !code ||
-                code === cleanTicker
-            );
-        }) || rows[0];
+            }
+        ) ||
+        rows[0];
 
 
     // =================================================
@@ -257,6 +411,7 @@ export async function getMarketData(ticker) {
 
     const price =
         toNumber(
+
             findField(
                 stock,
                 [
@@ -269,9 +424,12 @@ export async function getMarketData(ticker) {
                     "lastPrice",
                     "LastPrice",
                     "harga",
-                    "Harga"
+                    "Harga",
+                    "closePrice",
+                    "ClosePrice"
                 ]
             )
+
         );
 
 
@@ -281,6 +439,7 @@ export async function getMarketData(ticker) {
 
     const changePercent =
         toNumber(
+
             findField(
                 stock,
                 [
@@ -294,128 +453,142 @@ export async function getMarketData(ticker) {
                     "PersentasePerubahan"
                 ]
             )
+
         );
 
 
     // =================================================
-    // HISTORICAL BARS
-    // =================================================
-    //
-    // Kita TIDAK membuat candle palsu.
-    //
-    // Kalau endpoint ini ternyata tidak memberikan
-    // OHLCV historical, app akan memberikan error
-    // yang jelas.
-    //
+    // HISTORICAL OHLCV
     // =================================================
 
     const bars =
         rows
-            .map(row => {
+            .map(
+                row => {
 
-                const open =
-                    toNumber(
-                        findField(
-                            row,
-                            [
-                                "open",
-                                "Open",
-                                "openPrice",
-                                "OpenPrice"
-                            ]
-                        )
-                    );
+                    const open =
+                        toNumber(
 
-                const high =
-                    toNumber(
-                        findField(
-                            row,
-                            [
-                                "high",
-                                "High",
-                                "highPrice",
-                                "HighPrice"
-                            ]
-                        )
-                    );
+                            findField(
+                                row,
+                                [
+                                    "open",
+                                    "Open",
+                                    "openPrice",
+                                    "OpenPrice"
+                                ]
+                            )
 
-                const low =
-                    toNumber(
-                        findField(
-                            row,
-                            [
-                                "low",
-                                "Low",
-                                "lowPrice",
-                                "LowPrice"
-                            ]
-                        )
-                    );
-
-                const close =
-                    toNumber(
-                        findField(
-                            row,
-                            [
-                                "close",
-                                "Close",
-                                "last",
-                                "Last",
-                                "price",
-                                "Price"
-                            ]
-                        )
-                    );
-
-                const volume =
-                    toNumber(
-                        findField(
-                            row,
-                            [
-                                "volume",
-                                "Volume",
-                                "volumeValue",
-                                "VolumeValue",
-                                "totalVolume",
-                                "TotalVolume"
-                            ]
-                        )
-                    );
+                        );
 
 
-                if (
-                    !Number.isFinite(open) ||
-                    !Number.isFinite(high) ||
-                    !Number.isFinite(low) ||
-                    !Number.isFinite(close) ||
-                    !Number.isFinite(volume)
-                ) {
-                    return null;
+                    const high =
+                        toNumber(
+
+                            findField(
+                                row,
+                                [
+                                    "high",
+                                    "High",
+                                    "highPrice",
+                                    "HighPrice"
+                                ]
+                            )
+
+                        );
+
+
+                    const low =
+                        toNumber(
+
+                            findField(
+                                row,
+                                [
+                                    "low",
+                                    "Low",
+                                    "lowPrice",
+                                    "LowPrice"
+                                ]
+                            )
+
+                        );
+
+
+                    const close =
+                        toNumber(
+
+                            findField(
+                                row,
+                                [
+                                    "close",
+                                    "Close",
+                                    "last",
+                                    "Last",
+                                    "price",
+                                    "Price"
+                                ]
+                            )
+
+                        );
+
+
+                    const volume =
+                        toNumber(
+
+                            findField(
+                                row,
+                                [
+                                    "volume",
+                                    "Volume",
+                                    "totalVolume",
+                                    "TotalVolume",
+                                    "volumeValue",
+                                    "VolumeValue"
+                                ]
+                            )
+
+                        );
+
+
+                    if (
+                        !Number.isFinite(open) ||
+                        !Number.isFinite(high) ||
+                        !Number.isFinite(low) ||
+                        !Number.isFinite(close) ||
+                        !Number.isFinite(volume)
+                    ) {
+
+                        return null;
+
+                    }
+
+
+                    return {
+
+                        datetime:
+                            findField(
+                                row,
+                                [
+                                    "datetime",
+                                    "date",
+                                    "Date",
+                                    "tanggal",
+                                    "Tanggal",
+                                    "tradingDate",
+                                    "TradingDate"
+                                ]
+                            ),
+
+                        open,
+                        high,
+                        low,
+                        close,
+                        volume
+
+                    };
+
                 }
-
-
-                return {
-
-                    datetime:
-                        findField(
-                            row,
-                            [
-                                "datetime",
-                                "date",
-                                "Date",
-                                "tanggal",
-                                "Tanggal"
-                            ]
-                        ),
-
-                    open,
-                    high,
-                    low,
-                    close,
-                    volume
-                };
-
-            })
+            )
             .filter(Boolean);
 
 
@@ -431,24 +604,80 @@ export async function getMarketData(ticker) {
                 : NaN;
 
 
-    if (!Number.isFinite(finalPrice)) {
+    if (
+        !Number.isFinite(
+            finalPrice
+        )
+    ) {
 
         throw new Error(
-            `${cleanTicker}: harga tidak ditemukan dari response Zapi`
+
+            `${cleanTicker}: harga saham tidak ditemukan.`
+
         );
+
     }
 
 
     // =================================================
-    // IMPORTANT
+    // HISTORICAL VALIDATION
     // =================================================
 
-    if (bars.length === 0) {
+    if (
+        bars.length === 0
+    ) {
 
         throw new Error(
-            `${cleanTicker}: endpoint ${SETTINGS.path} tidak menyediakan OHLCV historical. Diperlukan endpoint historical/StockData untuk POC dan Volume Profile.`
+
+            `${cleanTicker}: endpoint Zapi ini tidak memberikan OHLCV historical. Profile/POC membutuhkan data candle historical.`
+
         );
+
     }
+
+
+    // =================================================
+    // URUTKAN CANDLE
+    // =================================================
+    //
+    // Engine kita membutuhkan:
+    //
+    // bars[0] = candle terbaru
+    //
+    // =================================================
+
+    bars.sort(
+        (a, b) => {
+
+            const dateA =
+                new Date(
+                    a.datetime
+                ).getTime();
+
+            const dateB =
+                new Date(
+                    b.datetime
+                ).getTime();
+
+
+            if (
+                !Number.isFinite(
+                    dateA
+                ) ||
+                !Number.isFinite(
+                    dateB
+                )
+            ) {
+
+                return 0;
+
+            }
+
+
+            return dateB - dateA;
+
+        }
+    );
 
 
     // =================================================
@@ -464,7 +693,9 @@ export async function getMarketData(ticker) {
             finalPrice,
 
         changePercent:
-            Number.isFinite(changePercent)
+            Number.isFinite(
+                changePercent
+            )
                 ? changePercent
                 : 0,
 
@@ -482,17 +713,22 @@ export async function getMarketData(ticker) {
                 "IDR",
 
             source:
-                "Zapi IDX Raw",
+                "Zapi IDX via Proxy",
 
             endpoint:
                 SETTINGS.path,
 
             live:
-                true
+                true,
+
+            candleCount:
+                bars.length
+
         },
 
         raw:
             response
+
     };
 
 
@@ -501,15 +737,24 @@ export async function getMarketData(ticker) {
     // =================================================
 
     cache.set(
+
         cleanTicker,
+
         {
-            time: Date.now(),
-            data: result
+
+            time:
+                Date.now(),
+
+            data:
+                result
+
         }
+
     );
 
 
     return result;
+
 }
 
 
@@ -518,5 +763,7 @@ export async function getMarketData(ticker) {
 // =====================================================
 
 export function clearMarketCache() {
+
     cache.clear();
+
 }
