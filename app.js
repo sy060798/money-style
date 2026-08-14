@@ -17,35 +17,29 @@ import {
     calculateSignal
 } from "./engine/signal.js";
 
+import {
+    SETTINGS
+} from "./config/settings.js";
+
 
 // =====================================================
 // ELEMENT
 // =====================================================
 
-const scanButton = document.getElementById("scanButton");
-const stockResults = document.getElementById("stockResults");
-const resultCount = document.getElementById("resultCount");
-const scanTime = document.getElementById("scanTime");
-const marketStatus = document.getElementById("marketStatus");
+const scanButton =
+    document.getElementById("scanButton");
 
+const stockResults =
+    document.getElementById("stockResults");
 
-// =====================================================
-// SETTINGS
-// =====================================================
+const resultCount =
+    document.getElementById("resultCount");
 
-const DEFAULT_SETTINGS = {
-    lookback: 150,
-    pocLookback: 50,
-    bins: 30,
-    valueAreaPercent: 70,
+const scanTime =
+    document.getElementById("scanTime");
 
-    volumePeriod: 20,
-    volumeSpikeMult: 2,
-
-    confirmTicks: 1,
-    redZoneBins: 1,
-    maxDistanceBins: 2
-};
+const marketStatus =
+    document.getElementById("marketStatus");
 
 
 // =====================================================
@@ -56,7 +50,7 @@ function getTickers() {
 
     const tickers = [];
 
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 1; i <= SETTINGS.maxStocks; i++) {
 
         const input =
             document.getElementById(`ticker${i}`);
@@ -75,7 +69,6 @@ function getTickers() {
         }
     }
 
-    // Hapus ticker duplikat
     return [...new Set(tickers)];
 }
 
@@ -89,7 +82,7 @@ function formatPrice(value) {
     if (
         value === null ||
         value === undefined ||
-        Number.isNaN(value)
+        !Number.isFinite(Number(value))
     ) {
         return "-";
     }
@@ -99,7 +92,7 @@ function formatPrice(value) {
         {
             maximumFractionDigits: 2
         }
-    ).format(value);
+    ).format(Number(value));
 }
 
 
@@ -112,17 +105,20 @@ function formatPercent(value) {
     if (
         value === null ||
         value === undefined ||
-        Number.isNaN(value)
+        !Number.isFinite(Number(value))
     ) {
         return "-";
     }
 
+    const number =
+        Number(value);
+
     const sign =
-        value > 0 ? "+" : "";
+        number > 0 ? "+" : "";
 
     return (
         sign +
-        value.toFixed(2) +
+        number.toFixed(2) +
         "%"
     );
 }
@@ -137,12 +133,12 @@ function formatVolumeRatio(value) {
     if (
         value === null ||
         value === undefined ||
-        Number.isNaN(value)
+        !Number.isFinite(Number(value))
     ) {
         return "-";
     }
 
-    return value.toFixed(2) + "x";
+    return Number(value).toFixed(2) + "x";
 }
 
 
@@ -171,7 +167,7 @@ function getStatusClass(status) {
         String(status || "")
             .toUpperCase();
 
-    if (value.includes("BUY")) {
+    if (value === "BUY") {
         return "status-buy";
     }
 
@@ -204,32 +200,13 @@ function getStatusText(signal) {
         return "NORMAL";
     }
 
-    if (signal.buySignal) {
-        return "BUY";
+    // Engine signal.js terbaru
+    if (signal.status) {
+        return signal.status;
     }
 
-    if (signal.dump) {
-        return "DUMP";
-    }
-
-    if (signal.tooFarBelow) {
-        return "POC LOST";
-    }
-
-    if (signal.waitingRecovery) {
-        return "WAIT / RECOVERY";
-    }
-
-    if (signal.insideRedZone) {
-        return "AREA MERAH";
-    }
-
-    if (signal.belowRedZone) {
-        return "DI BAWAH POC";
-    }
-
-    if (signal.aboveRedZone) {
-        return "DI ATAS POC";
+    if (signal.signal) {
+        return signal.signal;
     }
 
     return "NORMAL";
@@ -243,41 +220,37 @@ function getStatusText(signal) {
 function getValidationText(signal) {
 
     if (!signal) {
+
         return {
             text: "WAIT",
             className: ""
         };
     }
 
-    if (signal.tooFarBelow) {
+    // Engine signal.js terbaru
+    if (signal.validation) {
+
+        if (
+            signal.validation === "BUY VALID"
+        ) {
+            return {
+                text: "BUY VALID",
+                className: "valid"
+            };
+        }
+
+        if (
+            signal.validation.includes("INVALID")
+        ) {
+            return {
+                text: signal.validation,
+                className: "invalid"
+            };
+        }
 
         return {
-            text: "INVALID / TERLALU JAUH",
-            className: "invalid"
-        };
-    }
-
-    if (signal.buySignal) {
-
-        return {
-            text: "BUY TERKONFIRMASI",
-            className: "valid"
-        };
-    }
-
-    if (signal.waitingRecovery) {
-
-        return {
-            text: "MENUNGGU RECOVERY",
+            text: signal.validation,
             className: ""
-        };
-    }
-
-    if (signal.insideRedZone) {
-
-        return {
-            text: "VALID AREA",
-            className: "valid"
         };
     }
 
@@ -285,6 +258,42 @@ function getValidationText(signal) {
         text: "WAIT",
         className: ""
     };
+}
+
+
+// =====================================================
+// SIGNAL COLOR
+// =====================================================
+
+function getSignalColor(signal) {
+
+    if (!signal) {
+        return "";
+    }
+
+    const value =
+        String(signal.signal || "")
+            .toUpperCase();
+
+    if (value === "BUY") {
+        return "green";
+    }
+
+    if (
+        value === "DUMP" ||
+        value === "POC LOST"
+    ) {
+        return "red";
+    }
+
+    if (
+        value === "WAIT" ||
+        value === "AREA MERAH"
+    ) {
+        return "orange";
+    }
+
+    return "";
 }
 
 
@@ -362,21 +371,19 @@ function renderStock(data) {
     const validation =
         getValidationText(signal);
 
+    const volumeRatio =
+        volume?.volumeRatio ?? null;
+
+    const volumeSpike =
+        volume?.volumeSpike ?? false;
 
     const volumeColor =
-        volume.volumeSpike
+        volumeSpike
             ? "orange"
             : "";
 
-
     const signalColor =
-        signal.buySignal
-            ? "green"
-            : signal.dump || signal.tooFarBelow
-                ? "red"
-                : signal.waitingRecovery
-                    ? "orange"
-                    : "";
+        getSignalColor(signal);
 
 
     return `
@@ -426,7 +433,7 @@ function renderStock(data) {
 
                 <span
                     class="change ${
-                        changePercent >= 0
+                        Number(changePercent) >= 0
                             ? "change-up"
                             : "change-down"
                     }"
@@ -450,7 +457,9 @@ function renderStock(data) {
                     </span>
 
                     <span class="data-value red">
-                        ${formatPrice(profile.pocPrice)}
+                        ${formatPrice(
+                            profile?.pocPrice
+                        )}
                     </span>
 
                 </div>
@@ -463,9 +472,13 @@ function renderStock(data) {
                     </span>
 
                     <span class="data-value">
-                        ${formatPrice(profile.redZoneLow)}
+                        ${formatPrice(
+                            profile?.redZoneLow
+                        )}
                         -
-                        ${formatPrice(profile.redZoneHigh)}
+                        ${formatPrice(
+                            profile?.redZoneHigh
+                        )}
                     </span>
 
                 </div>
@@ -481,7 +494,7 @@ function renderStock(data) {
                         class="data-value ${volumeColor}"
                     >
                         ${formatVolumeRatio(
-                            volume.volumeRatio
+                            volumeRatio
                         )}
                     </span>
 
@@ -496,7 +509,7 @@ function renderStock(data) {
 
                     <span class="data-value orange">
                         ${formatPrice(
-                            profile.valueAreaHigh
+                            profile?.valueAreaHigh
                         )}
                     </span>
 
@@ -511,7 +524,7 @@ function renderStock(data) {
 
                     <span class="data-value green">
                         ${formatPrice(
-                            profile.valueAreaLow
+                            profile?.valueAreaLow
                         )}
                     </span>
 
@@ -525,7 +538,10 @@ function renderStock(data) {
                     </span>
 
                     <span class="data-value blue">
-                        ${DEFAULT_SETTINGS.pocLookback}
+                        ${escapeHTML(
+                            profile?.pocLookback ??
+                            SETTINGS.pocLookback
+                        )}
                     </span>
 
                 </div>
@@ -546,7 +562,10 @@ function renderStock(data) {
                     </span>
 
                     <span>
-                        ${DEFAULT_SETTINGS.bins} LEVEL
+                        ${escapeHTML(
+                            profile?.bins ??
+                            SETTINGS.bins
+                        )} LEVEL
                     </span>
 
                 </div>
@@ -562,7 +581,9 @@ function renderStock(data) {
                                 5,
                                 Math.min(
                                     100,
-                                    profile.profileStrength || 0
+                                    Number(
+                                        profile?.profileStrength
+                                    ) || 0
                                 )
                             )}%;
                         "
@@ -583,7 +604,9 @@ function renderStock(data) {
                                 0,
                                 Math.min(
                                     100,
-                                    profile.pocPosition || 50
+                                    Number(
+                                        profile?.pocPosition
+                                    ) || 50
                                 )
                             )}%;
                         "
@@ -607,8 +630,24 @@ function renderStock(data) {
                 <span
                     class="signal-value ${signalColor}"
                 >
-                    ${escapeHTML(status)}
+                    ${escapeHTML(
+                        signal?.signal || status
+                    )}
                 </span>
+
+            </div>
+
+
+            <!-- ================================= -->
+            <!-- SCORE -->
+            <!-- ================================= -->
+
+            <div class="validation">
+
+                SCORE:
+                ${escapeHTML(
+                    signal?.score ?? 0
+                )}/100
 
             </div>
 
@@ -621,7 +660,9 @@ function renderStock(data) {
                 class="validation ${validation.className}"
             >
                 BUY VALIDASI:
-                ${escapeHTML(validation.text)}
+                ${escapeHTML(
+                    validation.text
+                )}
             </div>
 
         </article>
@@ -693,9 +734,9 @@ async function scanStock(ticker) {
 
     try {
 
-        // ---------------------------------------------
-        // 1. AMBIL DATA MARKET NYATA
-        // ---------------------------------------------
+        // =============================================
+        // 1. MARKET DATA
+        // =============================================
 
         const marketData =
             await getMarketData(ticker);
@@ -706,51 +747,74 @@ async function scanStock(ticker) {
             !Array.isArray(marketData.bars) ||
             marketData.bars.length === 0
         ) {
-
             throw new Error(
                 "Tidak ada data market"
             );
         }
 
 
-        // ---------------------------------------------
+        console.log(
+            `[${ticker}]`,
+            "bars:",
+            marketData.bars.length
+        );
+
+
+        // =============================================
         // 2. PROFILE
-        // ---------------------------------------------
+        // =============================================
 
         const profile =
             calculateProfile(
                 marketData.bars,
-                DEFAULT_SETTINGS
+                SETTINGS
             );
 
 
-        // ---------------------------------------------
+        // =============================================
         // 3. VOLUME
-        // ---------------------------------------------
+        // =============================================
 
         const volume =
             calculateVolume(
                 marketData.bars,
-                DEFAULT_SETTINGS
+                SETTINGS
             );
 
 
-        // ---------------------------------------------
+        if (!volume) {
+
+            throw new Error(
+                `Data volume belum cukup. ` +
+                `Butuh minimal ${SETTINGS.volumePeriod} candle.`
+            );
+        }
+
+
+        // =============================================
         // 4. SIGNAL
-        // ---------------------------------------------
+        // =============================================
 
         const signal =
             calculateSignal(
                 marketData.bars,
                 profile,
                 volume,
-                DEFAULT_SETTINGS
+                SETTINGS
             );
 
 
-        // ---------------------------------------------
-        // 5. RETURN
-        // ---------------------------------------------
+        if (!signal) {
+
+            throw new Error(
+                "Signal tidak dapat dihitung"
+            );
+        }
+
+
+        // =============================================
+        // 5. RESULT
+        // =============================================
 
         return {
 
@@ -777,7 +841,9 @@ async function scanStock(ticker) {
         );
 
         return {
+
             ticker,
+
             error:
                 error?.message ||
                 "Gagal mengambil data"
@@ -817,7 +883,10 @@ async function scanAll() {
 
     try {
 
-        // Jalankan request secara paralel
+        // =============================================
+        // REQUEST PARALEL
+        // =============================================
+
         const results =
             await Promise.all(
                 tickers.map(
@@ -827,9 +896,9 @@ async function scanAll() {
             );
 
 
-        // ---------------------------------------------
+        // =============================================
         // RENDER
-        // ---------------------------------------------
+        // =============================================
 
         stockResults.innerHTML =
             results
@@ -873,9 +942,14 @@ async function scanAll() {
         marketStatus.textContent =
             "DATA TERHUBUNG";
 
+
     } catch (error) {
 
-        console.error(error);
+        console.error(
+            "Scan error:",
+            error
+        );
+
 
         stockResults.innerHTML = `
 
@@ -896,6 +970,7 @@ async function scanAll() {
             </div>
         `;
 
+
         marketStatus.textContent =
             "DATA ERROR";
 
@@ -912,10 +987,13 @@ async function scanAll() {
 // BUTTON
 // =====================================================
 
-scanButton.addEventListener(
-    "click",
-    scanAll
-);
+if (scanButton) {
+
+    scanButton.addEventListener(
+        "click",
+        scanAll
+    );
+}
 
 
 // =====================================================
