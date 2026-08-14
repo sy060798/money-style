@@ -7,6 +7,9 @@
 const ZAPI_BASE_URL =
     "https://zpi.web.id";
 
+const ZAPI_ENDPOINT =
+    "/api/finance/idx/raw";
+
 
 // =====================================================
 // CORS
@@ -21,7 +24,7 @@ const CORS_HEADERS = {
         "GET, OPTIONS",
 
     "Access-Control-Allow-Headers":
-        "Content-Type, Authorization",
+        "Content-Type",
 
     "Access-Control-Max-Age":
         "86400"
@@ -30,35 +33,86 @@ const CORS_HEADERS = {
 
 
 // =====================================================
-// RESPONSE
+// JSON RESPONSE
 // =====================================================
 
-function corsResponse(
-    body,
+function jsonResponse(
+    data,
     status = 200,
     extraHeaders = {}
 ) {
 
-    const headers =
-        new Headers({
-
-            ...CORS_HEADERS,
-
-            ...extraHeaders,
-
-            "Content-Type":
-                "application/json; charset=utf-8"
-
-        });
-
-
     return new Response(
-        body,
+
+        JSON.stringify(data),
+
         {
             status,
-            headers
+
+            headers: {
+
+                ...CORS_HEADERS,
+
+                ...extraHeaders,
+
+                "Content-Type":
+                    "application/json; charset=utf-8"
+
+            }
+
         }
+
     );
+
+}
+
+
+// =====================================================
+// TEXT RESPONSE
+// =====================================================
+
+function textResponse(
+    text,
+    status = 200,
+    extraHeaders = {}
+) {
+
+    return new Response(
+
+        text,
+
+        {
+            status,
+
+            headers: {
+
+                ...CORS_HEADERS,
+
+                ...extraHeaders,
+
+                "Content-Type":
+                    "application/json; charset=utf-8"
+
+            }
+
+        }
+
+    );
+
+}
+
+
+// =====================================================
+// NORMALIZE TICKER
+// =====================================================
+
+function normalizeTicker(ticker) {
+
+    return String(ticker || "")
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, "");
+
 }
 
 
@@ -73,9 +127,9 @@ export default {
         env
     ) {
 
-        // ---------------------------------------------
-        // OPTIONS / PREFLIGHT
-        // ---------------------------------------------
+        // =================================================
+        // CORS PREFLIGHT
+        // =================================================
 
         if (
             request.method ===
@@ -94,29 +148,29 @@ export default {
         }
 
 
-        // ---------------------------------------------
-        // HANYA GET
-        // ---------------------------------------------
+        // =================================================
+        // ONLY GET
+        // =================================================
 
         if (
             request.method !==
             "GET"
         ) {
 
-            return corsResponse(
-                JSON.stringify({
+            return jsonResponse(
+                {
                     error:
                         "Method not allowed"
-                }),
+                },
                 405
             );
 
         }
 
 
-        // ---------------------------------------------
-        // API KEY
-        // ---------------------------------------------
+        // =================================================
+        // CHECK SECRET
+        // =================================================
 
         const apiKey =
             env.ZAPI_API_KEY;
@@ -124,20 +178,20 @@ export default {
 
         if (!apiKey) {
 
-            return corsResponse(
-                JSON.stringify({
+            return jsonResponse(
+                {
                     error:
-                        "ZAPI_API_KEY belum dikonfigurasi di Cloudflare Worker"
-                }),
+                        "ZAPI_API_KEY belum dikonfigurasi di Cloudflare Worker."
+                },
                 500
             );
 
         }
 
 
-        // ---------------------------------------------
-        // URL REQUEST
-        // ---------------------------------------------
+        // =================================================
+        // INCOMING URL
+        // =================================================
 
         const incomingUrl =
             new URL(
@@ -145,33 +199,105 @@ export default {
             );
 
 
-        // ---------------------------------------------
-        // PROXY KE ZAPI
-        // ---------------------------------------------
+        // =================================================
+        // ALLOWED PARAMETERS
+        // =================================================
+
+        const path =
+            incomingUrl.searchParams.get(
+                "path"
+            );
+
+
+        const query =
+            incomingUrl.searchParams.get(
+                "query"
+            );
+
+
+        // =================================================
+        // DEFAULT PATH
+        // =================================================
+
+        const finalPath =
+            path ||
+            "TradingSummary/GetStockSummary";
+
+
+        // =================================================
+        // SECURITY
+        // =================================================
+        //
+        // Worker hanya mengizinkan endpoint IDX raw.
+        // Tidak boleh digunakan untuk URL arbitrary.
+        //
+        // =================================================
+
+        if (
+            !finalPath ||
+            finalPath.includes("://") ||
+            finalPath.startsWith("/")
+        ) {
+
+            return jsonResponse(
+                {
+                    error:
+                        "Invalid Zapi path"
+                },
+                400
+            );
+
+        }
+
+
+        // =================================================
+        // BUILD ZAPI URL
+        // =================================================
 
         const upstreamUrl =
             new URL(
-                "/api/finance/idx/raw",
+                ZAPI_ENDPOINT,
                 ZAPI_BASE_URL
             );
 
 
-        // Copy query:
+        // path dan query dikirim sebagai
+        // query parameter sesuai API Zapi.
         //
-        // ?path=TradingSummary%2FGetStockSummary
-        // &query=length%3D1000%26start%3D0%26kodeEmiten%3DBBCA
+        // Contoh:
+        //
+        // ?path=TradingSummary/GetStockSummary
+        // &query=length=1000&start=0&kodeEmiten=BBCA
         //
 
-        upstreamUrl.search =
-            incomingUrl.search;
+        upstreamUrl.searchParams.set(
+            "path",
+            finalPath
+        );
 
 
-        // ---------------------------------------------
+        if (query) {
+
+            upstreamUrl.searchParams.set(
+                "query",
+                query
+            );
+
+        } else {
+
+            upstreamUrl.searchParams.set(
+                "query",
+                "length=1000&start=0"
+            );
+
+        }
+
+
+        // =================================================
         // REQUEST KE ZAPI
-        // ---------------------------------------------
+        // =================================================
 
         let upstreamResponse;
-
 
         try {
 
@@ -180,7 +306,8 @@ export default {
                     upstreamUrl.toString(),
                     {
 
-                        method: "GET",
+                        method:
+                            "GET",
 
                         headers: {
 
@@ -197,39 +324,44 @@ export default {
 
         } catch (error) {
 
-            return corsResponse(
-                JSON.stringify({
+            return jsonResponse(
+                {
                     error:
                         "Gagal menghubungi Zapi",
+
                     message:
                         error?.message ||
                         "Network error"
-                }),
+                },
                 502
             );
 
         }
 
 
-        // ---------------------------------------------
-        // AMBIL RESPONSE
-        // ---------------------------------------------
+        // =================================================
+        // RESPONSE ZAPI
+        // =================================================
 
         const body =
             await upstreamResponse.text();
 
 
-        // ---------------------------------------------
-        // RESPONSE KE BROWSER
-        // ---------------------------------------------
+        // =================================================
+        // RETURN TO BROWSER
+        // =================================================
 
-        return corsResponse(
+        return textResponse(
+
             body,
+
             upstreamResponse.status,
+
             {
                 "Cache-Control":
                     "no-store"
             }
+
         );
 
     }
