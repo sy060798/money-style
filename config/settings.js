@@ -10,16 +10,52 @@ export const SETTINGS = {
     // =================================================
 
     // Jumlah candle untuk menghitung profile.
-    lookback: 150,
+    //
+    // TIMEFRAME 1H:
+    // 150 candle = konteks sekitar 150 jam trading.
+    //
+    lookback:
+        150,
 
-    // Jumlah candle terbaru untuk Volume Profile / POC.
-    pocLookback: 50,
 
-    // Jumlah price bins.
-    bins: 30,
+    // =================================================
+    // POC AKTIF
+    // =================================================
+
+    // Jumlah candle terbaru yang digunakan
+    // untuk menghitung Volume Profile / POC aktif.
+    //
+    // Sesuai Pine Script:
+    // pocLookback = 50
+    //
+    pocLookback:
+        50,
+
+
+    // =================================================
+    // PRICE BINS
+    // =================================================
+
+    // Jumlah level harga dalam profile.
+    //
+    // Sesuai Pine Script:
+    // bins = 30
+    //
+    bins:
+        30,
+
+
+    // =================================================
+    // VALUE AREA
+    // =================================================
 
     // Persentase volume untuk Value Area.
-    valueAreaPercent: 70,
+    //
+    // Sesuai Pine Script:
+    // valueAreaPercent = 70
+    //
+    valueAreaPercent:
+        70,
 
 
     // =================================================
@@ -27,74 +63,139 @@ export const SETTINGS = {
     // =================================================
 
     // Periode rata-rata volume.
-    volumePeriod: 20,
+    //
+    // Pine:
+    // ta.sma(volume, 20)
+    //
+    volumePeriod:
+        20,
+
 
     // Volume >= 2x rata-rata = volume spike.
-    volumeSpikeMult: 2.0,
+    //
+    // Pine:
+    // volumeRatio >= 2.0
+    //
+    volumeSpikeMult:
+        2.0,
 
 
     // =================================================
     // BUY CONFIRMATION
     // =================================================
 
-    // Jumlah tick di atas low recovery.
-    confirmTicks: 1,
+    // Jumlah tick recovery.
+    //
+    // Pine:
+    // confirmTicks = 1
+    //
+    confirmTicks:
+        1,
 
-    // Tick size default.
+
+    // =================================================
+    // TICK SIZE
+    // =================================================
+
+    // Default tick size.
+    //
+    // Untuk scanner JS sementara menggunakan 0.01.
     //
     // Catatan:
-    // Untuk tahap scanner ini digunakan 0.01.
-    // Kalau nanti ingin mengikuti tick size IDX
-    // berdasarkan kelompok harga, bisa dibuat
-    // dinamis.
-    tickSize: 0.01,
+    // Pine menggunakan:
+    //
+    // syminfo.mintick
+    //
+    // Jadi nanti bisa dibuat dinamis berdasarkan
+    // harga saham / aturan tick IDX jika diperlukan.
+    //
+    tickSize:
+        0.01,
 
 
     // =================================================
     // RED ZONE
     // =================================================
 
-    // Jumlah bin di atas/bawah POC.
-    redZoneBins: 1,
+    // Jumlah bin di atas dan bawah POC.
+    //
+    // Pine:
+    // redZoneBins = 1
+    //
+    redZoneBins:
+        1,
 
 
     // =================================================
     // BUY INVALIDATION
     // =================================================
 
-    // Maksimal jarak bin di bawah Red Zone.
-    maxDistanceBins: 2,
+    // Maksimal jarak harga di bawah Red Zone
+    // sebelum setup recovery dianggap batal.
+    //
+    // Pine:
+    // maxDistanceBins = 2
+    //
+    maxDistanceBins:
+        2,
 
 
     // =================================================
     // MARKET DATA
     // =================================================
 
-    // Jumlah candle yang diminta dari Worker.
+    // =================================================
+    // TIMEFRAME
+    // =================================================
     //
-    // Worker:
-    // ?code=BBCA&length=150
+    // SCANNER DIKUNCI KE 1 JAM.
+    //
+    // Jangan gunakan "1d".
+    //
+    // Market.js harus meneruskan timeframe ini
+    // ke Worker / endpoint Zapi.
+    //
+    interval:
+        "1h",
+
+
+    // Nama timeframe yang lebih eksplisit untuk
+    // digunakan oleh engine / metadata.
+    //
+    timeframe:
+        "1H",
+
+
+    // =================================================
+    // CANDLE LIMIT
+    // =================================================
+    //
+    // Jumlah candle 1H yang diminta.
     //
     // Harus >= lookback.
-    candleLimit: 150,
-
-    // Interval data.
-    interval: "1d",
+    //
+    candleLimit:
+        150,
 
 
     // =================================================
     // SCANNER
     // =================================================
 
-    // Maksimal ticker yang diproses sekali scan.
-    maxStocks: 5,
+    // Maksimal ticker yang diproses dalam satu scan.
+    //
+    maxStocks:
+        5,
 
 
     // =================================================
     // CACHE
     // =================================================
 
-    // Cache market data di browser.
+    // Cache market data browser.
+    //
+    // 30 detik.
+    //
     cacheDuration:
         30 * 1000,
 
@@ -103,7 +204,10 @@ export const SETTINGS = {
     // REFRESH
     // =================================================
 
-    // Refresh otomatis setiap 60 detik.
+    // Refresh otomatis scanner.
+    //
+    // 60 detik.
+    //
     refreshInterval:
         60 * 1000
 
