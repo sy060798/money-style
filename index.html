@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <meta
+        name="description"
+        content="Money Style Volume Profile Scanner"
+    >
+
+    <meta
+        name="theme-color"
+        content="#080b12"
+    >
+
+    <title>Money Style Scanner</title>
+
+    <!-- =====================================================
+         CSS UTAMA
+         ===================================================== -->
+
+    <link
+        rel="stylesheet"
+        href="./style.css"
+    >
+</head>
+
+
+<body>
+
+    <!-- =====================================================
+         TOP BAR
+         ===================================================== -->
+
+    <header class="topbar">
+
+        <div class="brand">
+
+            <span class="brand-dot"></span>
+
+            <div>
+
+                <h1>
+                    Money Style
+                </h1>
+
+                <span>
+                    Volume Profile Scanner
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <div
+            class="market-status"
+            id="marketStatusBox"
+        >
+
+            <span class="status-dot"></span>
+
+            <span id="marketStatus">
+                MARKET DATA
+            </span>
+
+        </div>
+
+    </header>
+
+
+
+    <!-- =====================================================
+         MAIN
+         ===================================================== -->
+
+    <main class="container">
+
+
+        <!-- =================================================
+             SCANNER INPUT
+             ================================================= -->
+
+        <section class="scanner-panel">
+
+            <div class="panel-header">
+
+                <div>
+
+                    <h2>
+                        Stock Scanner
+                    </h2>
+
+                    <p>
+                        Masukkan maksimal 5 ticker saham
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <!-- =============================================
+                 TICKER INPUTS
+                 ============================================= -->
+
+            <div class="ticker-inputs">
+
+                <input
+                    type="text"
+                    id="ticker1"
+                    placeholder="BBCA"
+                    maxlength="10"
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+
+                <input
+                    type="text"
+                    id="ticker2"
+                    placeholder="BBRI"
+                    maxlength="10"
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+
+                <input
+                    type="text"
+                    id="ticker3"
+                    placeholder="BMRI"
+                    maxlength="10"
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+
+                <input
+                    type="text"
+                    id="ticker4"
+                    placeholder="TLKM"
+                    maxlength="10"
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+
+                <input
+                    type="text"
+                    id="ticker5"
+                    placeholder="ASII"
+                    maxlength="10"
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+
+
+                <button
+                    type="button"
+                    id="scanButton"
+                    class="scan-button"
+                >
+                    <span class="scan-button-text">
+                        SCAN
+                    </span>
+
+                    <span
+                        class="scan-spinner"
+                        aria-hidden="true"
+                    ></span>
+
+                </button>
+
+            </div>
+
+
+            <!-- =============================================
+                 SCANNER INFO
+                 ============================================= -->
+
+            <div class="scanner-info">
+
+                <span>
+                    POC aktif:
+                    <strong>50 candle</strong>
+                </span>
+
+                <span>
+                    Profile:
+                    <strong>150 candle</strong>
+                </span>
+
+                <span>
+                    Value Area:
+                    <strong>70%</strong>
+                </span>
+
+                <span>
+                    Maks:
+                    <strong>5 saham</strong>
+                </span>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- =================================================
+             MARKET RESULTS
+             ================================================= -->
+
+        <section class="results-section">
+
+
+            <!-- =============================================
+                 SECTION HEADER
+                 ============================================= -->
+
+            <div class="section-title">
+
+                <div>
+
+                    <h2>
+                        Market Scanner
+                    </h2>
+
+                    <p id="scanTime">
+                        Menunggu scan...
+                    </p>
+
+                </div>
+
+
+                <span
+                    id="resultCount"
+                    class="result-count"
+                >
+                    0 SAHAM
+                </span>
+
+            </div>
+
+
+
+            <!-- =============================================
+                 STOCK RESULTS
+                 ============================================= -->
+
+            <div
+                id="stockResults"
+                class="stock-grid"
+            >
+
+                <!--
+                    Initial state.
+                    Akan diganti oleh app.js.
+                -->
+
+                <div class="empty-state">
+
+                    <div class="empty-icon">
+                        ◎
+                    </div>
+
+                    <h3>
+                        Belum ada data
+                    </h3>
+
+                    <p>
+                        Masukkan ticker saham kemudian tekan
+                        <strong>SCAN</strong>.
+                    </p>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- =================================================
+             LEGEND
+             ================================================= -->
+
+        <section class="legend-panel">
+
+
+            <div class="legend-item">
+
+                <span
+                    class="legend-dot green"
+                ></span>
+
+                <span>
+                    BUY
+                </span>
+
+            </div>
+
+
+            <div class="legend-item">
+
+                <span
+                    class="legend-dot orange"
+                ></span>
+
+                <span>
+                    WAIT / RECOVERY
+                </span>
+
+            </div>
+
+
+            <div class="legend-item">
+
+                <span
+                    class="legend-dot red"
+                ></span>
+
+                <span>
+                    DUMP / POC LOST
+                </span>
+
+            </div>
+
+
+            <div class="legend-item">
+
+                <span
+                    class="legend-dot gray"
+                ></span>
+
+                <span>
+                    NORMAL
+                </span>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- =================================================
+             DATA DISCLAIMER
+             ================================================= -->
+
+        <section class="data-notice">
+
+            <span class="data-notice-dot"></span>
+
+            <div>
+
+                <strong>
+                    MARKET DATA
+                </strong>
+
+                <p>
+                    Scanner menggunakan data market yang
+                    tersedia dari sumber API. Jika data gagal
+                    diambil, scanner akan menampilkan ERROR
+                    dan tidak membuat data harga palsu.
+                </p>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+
+    <!-- =====================================================
+         FOOTER
+         ===================================================== -->
+
+    <footer>
+
+        <span>
+            Money Style Scanner
+        </span>
+
+        <span>
+            Market data only — not financial advice
+        </span>
+
+    </footer>
+
+
+
+    <!-- =====================================================
+         JAVASCRIPT UTAMA
+         ===================================================== -->
+
+    <script
+        type="module"
+        src="./app.js"
+    ></script>
+
+</body>
+</html>
