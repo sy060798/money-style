@@ -3,7 +3,7 @@
 // api/market.js
 // =====================================================
 
-const API_KEY = "ISI_API_KEY_TWELVE_DATA_DI_SINI";
+const API_KEY = "53c7109a9a114a65847c1f15afa69db1";
 
 const BASE_URL = "https://api.twelvedata.com";
 
