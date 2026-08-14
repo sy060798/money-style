@@ -1,10 +1,10 @@
 // =====================================================
 // MONEY STYLE SCANNER
-// Cloudflare Worker -> Zapi IDX
+// Cloudflare Worker -> Zapi IDX Stock History
 // =====================================================
 
 const ZAPI_URL =
-  "https://zpi.web.id/api/finance/idx/raw";
+  "https://api.zpi.web.id/v1/finance:idx/stock-history";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -21,7 +21,8 @@ function json(data, status = 200) {
         ...CORS,
         "Content-Type":
           "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
+        "Cache-Control":
+          "no-store",
       },
     }
   );
@@ -31,9 +32,9 @@ export default {
 
   async fetch(request, env) {
 
-    // =================================================
-    // OPTIONS
-    // =================================================
+    // ===================================================
+    // CORS PREFLIGHT
+    // ===================================================
 
     if (request.method === "OPTIONS") {
       return new Response(null, {
@@ -43,9 +44,9 @@ export default {
     }
 
 
-    // =================================================
+    // ===================================================
     // METHOD
-    // =================================================
+    // ===================================================
 
     if (request.method !== "GET") {
       return json({
@@ -54,9 +55,9 @@ export default {
     }
 
 
-    // =================================================
-    // SECRET
-    // =================================================
+    // ===================================================
+    // API KEY
+    // ===================================================
 
     const apiKey =
       env.ZAPI_API_KEY;
@@ -71,85 +72,35 @@ export default {
 
     try {
 
+      // =================================================
+      // REQUEST URL
+      // =================================================
+
       const incoming =
         new URL(request.url);
 
 
       // =================================================
-      // PARAMETER
+      // STOCK CODE
       // =================================================
-
-      const path =
-        incoming.searchParams.get("path");
 
       const code =
-        incoming.searchParams.get("code");
-
-      const date =
-        incoming.searchParams.get("date");
-
-      const length =
-        incoming.searchParams.get("length");
-
-      const start =
-        incoming.searchParams.get("start");
-
-      const query =
-        incoming.searchParams.get("query");
+        (
+          incoming.searchParams.get("code") ||
+          ""
+        )
+          .trim()
+          .toUpperCase();
 
 
-      // =================================================
-      // PATH
-      // =================================================
-
-      if (!path) {
+      if (!code) {
         return json({
           error:
-            "Parameter path kosong",
+            "Parameter code kosong",
 
           example:
-            "?path=ISI_ENDPOINT&code=BBCA&length=150",
+            "?code=BBCA&length=150",
         }, 400);
-      }
-
-
-      // =================================================
-      // TARGET
-      // =================================================
-
-      const target =
-        new URL(ZAPI_URL);
-
-
-      target.searchParams.set(
-        "path",
-        path
-      );
-
-
-      // =================================================
-      // CODE
-      // =================================================
-
-      if (code) {
-
-        target.searchParams.set(
-          "code",
-          code.trim().toUpperCase()
-        );
-      }
-
-
-      // =================================================
-      // DATE
-      // =================================================
-
-      if (date) {
-
-        target.searchParams.set(
-          "date",
-          date
-        );
       }
 
 
@@ -157,68 +108,84 @@ export default {
       // LENGTH
       // =================================================
 
-      if (length) {
+      let length =
+        Number(
+          incoming.searchParams.get("length") ||
+          150
+        );
 
-        const n =
-          Number(length);
 
-        if (
-          Number.isFinite(n) &&
-          n > 0
-        ) {
+      if (!Number.isFinite(length)) {
+        return json({
+          error:
+            "Parameter length tidak valid",
+        }, 400);
+      }
 
-          target.searchParams.set(
-            "length",
-            String(
-              Math.min(
-                Math.floor(n),
-                1000
-              )
-            )
-          );
-        }
+
+      length =
+        Math.floor(length);
+
+
+      if (length < 1) {
+        length = 1;
+      }
+
+
+      if (length > 2000) {
+        length = 2000;
       }
 
 
       // =================================================
-      // START
+      // OPTIONAL DATE RANGE
       // =================================================
 
-      if (start) {
+      const from =
+        incoming.searchParams.get("from");
 
-        const n =
-          Number(start);
-
-        if (
-          Number.isFinite(n) &&
-          n >= 0
-        ) {
-
-          target.searchParams.set(
-            "start",
-            String(
-              Math.floor(n)
-            )
-          );
-        }
-      }
+      const to =
+        incoming.searchParams.get("to");
 
 
       // =================================================
-      // QUERY
+      // TARGET ZAPI
       // =================================================
 
-      if (query) {
+      const target =
+        new URL(ZAPI_URL);
 
+
+      target.searchParams.set(
+        "code",
+        code
+      );
+
+
+      target.searchParams.set(
+        "length",
+        String(length)
+      );
+
+
+      if (from) {
         target.searchParams.set(
-          "query",
-          query
+          "from",
+          from
+        );
+      }
+
+
+      if (to) {
+        target.searchParams.set(
+          "to",
+          to
         );
       }
 
 
       // =================================================
-      // REQUEST
+      // REQUEST LOG
       // =================================================
 
       console.log(
@@ -226,6 +193,10 @@ export default {
         target.toString()
       );
 
+
+      // =================================================
+      // CALL ZAPI
+      // =================================================
 
       const upstream =
         await fetch(
@@ -237,15 +208,15 @@ export default {
               "Accept":
                 "application/json",
 
-              "Authorization":
-                `Bearer ${apiKey}`,
+              "x-api-key":
+                apiKey,
             },
           }
         );
 
 
       // =================================================
-      // RESPONSE
+      // READ RESPONSE
       // =================================================
 
       const body =
@@ -258,6 +229,10 @@ export default {
         ) ||
         "application/json; charset=utf-8";
 
+
+      // =================================================
+      // RETURN ZAPI RESPONSE
+      // =================================================
 
       return new Response(
         body,
@@ -279,6 +254,10 @@ export default {
 
 
     } catch (error) {
+
+      // =================================================
+      // WORKER ERROR
+      // =================================================
 
       return json({
         error:
